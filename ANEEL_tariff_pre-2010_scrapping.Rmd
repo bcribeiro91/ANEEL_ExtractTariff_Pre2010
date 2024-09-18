@@ -1,0 +1,163 @@
+---
+title: "Extract ANEEL's Tariff pre-2010"
+author: "Beatriz Couto Ribeiro"
+date: "2024-09-18"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+---
+title: "Hydrogen World - scrapping IEA"
+author: "Beatriz Couto Ribeiro"
+date: "2024-03-29"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Load Packages
+```{r setup, include=FALSE}
+
+rm(list=ls())
+
+library(rvest) # package for web scrapping
+library(tidyverse)
+library(htmltools)
+library(readtext)
+library(httr)
+library(readr)
+library(httr)
+library(ggplot2)
+library(pdftools)
+library(stringr)
+
+library(tabulapdf)
+
+remotes::install_github(c("ropensci/tabulapdf"), INSTALL_opts = "--no-multiarch")
+
+```
+
+#Data
+```{r}
+
+getwd()
+
+setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data")
+
+```
+
+#Load file to retrieve documents 
+```{r}
+
+# Define the path to your CSV file
+source_csv <- read.csv("file_ANEEL_Links documents_scrap.csv")
+
+```
+
+#Download PDF files
+```{r}
+
+# Define the path to your CSV file
+csv_file_path <- "C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/file_ANEEL_Links_documents_scrap.csv"
+
+# Define the directory where you want to save the downloaded PDFs
+download_directory <- "C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/ANEEL_tariff_documents"
+
+
+# Create the download directory if it doesn't exist
+if (!dir.exists(download_directory)) {
+  dir.create(download_directory)
+}
+
+# Read the CSV file
+data <- read_csv(csv_file_path)
+
+# Ensure the necessary columns exist
+required_columns <- c("Link", "Sigla", "Ano")
+missing_columns <- setdiff(required_columns, colnames(data))
+if (length(missing_columns) > 0) {
+  stop("The CSV file is missing the following columns: ", paste(missing_columns, collapse = ", "))
+}
+
+# Function to download a single PDF
+download_pdf <- function(url, destfile) {
+  tryCatch({
+    GET(url, write_disk(destfile, overwrite = TRUE))
+    message("Downloaded: ", url)
+  }, error = function(e) {
+    message("Failed to download: ", url, " - ", e$message)
+  })
+}
+
+# Loop through each Link and download the PDF
+for (i in 1:nrow(data)) {
+  url <- data$Link[i]
+  sigla <- data$Sigla[i]
+  ano <- data$Ano[i]
+  # Construct the file name using Sigla and Ano
+  file_name <- paste0(sigla, "_", ano, ".pdf")
+  # Define the destination file path
+  destfile <- file.path(download_directory, file_name)
+  # Download the PDF
+  download_pdf(url, destfile)
+}
+
+```
+
+# Retrieve tables from PDF
+```{r}
+
+# Load required libraries
+library(pdftools)
+library(tabulizer)
+
+# Define folder paths
+input_folder <- "C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/ANEEL_tariff_documents"
+output_folder <- "C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/ANEEL_tariff_csv"
+
+# List all PDF files in the input folder
+pdf_files <- list.files(input_folder, pattern = "\\.pdf$", full.names = TRUE)
+
+# Define the relevant columns to search for
+columns_to_extract <- c("TARIFA CONVENCIONAL", "DEMANDA", "CONSUMO", 
+                        "A2", "A3", "A3 COOPERATIVA DE ELETRIFICAÇÃO RURAL", 
+                        "A3a", "A4", "A4a COOPERATIVA DE ELETRIFICAÇÃO RURAL TIPO 1", 
+                        "A4b COOPERATIVA DE ELETRIFICAÇÃO RURAL TIPO 2", 
+                        "A4c COOPERATIVA DE ELETRIFICAÇÃO RURAL TIPO 3", 
+                        "AS (Subterrâneo)", "B1-RESIDENCIAL", 
+                        "B1-RESIDENCIAL BAIXA RENDA", "B2-RURAL", 
+                        "B2-COOPERATIVA DE ELETRIFICAÇÃO RURAL", 
+                        "B2-SERVIÇO DE IRRIGAÇÃO")
+
+# Function to extract tables from a PDF file and save them as CSV
+extract_and_save_table <- function(pdf_file, output_folder, columns_to_extract) {
+  # Extract tables from the PDF
+  tables <- extract_tables(pdf_file, guess = TRUE)
+  
+  for (table in tables) {
+    # Convert the table to a data frame
+    df <- as.data.frame(table)
+    
+    # Filter the data frame for relevant columns
+    selected_columns <- df[, grepl(paste(columns_to_extract, collapse = "|"), df)]
+    
+    # Check if the resulting data frame has any rows and columns
+    if (ncol(selected_columns) > 0) {
+      # Create an output file name
+      output_file <- paste0(output_folder, "/", basename(pdf_file), ".csv")
+      
+      # Save the filtered table to a CSV file
+      write.csv(selected_columns, output_file, row.names = FALSE)
+    }
+  }
+}
+
+# Loop over all PDF files and apply the extraction function
+for (pdf_file in pdf_files) {
+  extract_and_save_table(pdf_file, output_folder, columns_to_extract)
+}
+
+
+```
+
