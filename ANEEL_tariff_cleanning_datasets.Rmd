@@ -1,0 +1,124 @@
+---
+title: "ANEEL_tariff_cleanning"
+author: "Beatriz Couto Ribeiro"
+date: "2024-09-19"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+## 1.1. Set Folder
+```{r}
+
+getwd()
+
+setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data")
+
+```
+
+
+## 1.3. Install and load packages
+```{r}
+
+if (!require("pacman")) install.packages("pacman") #pacman will not accept a character vector so the same packages are repeated
+
+pacman::p_load(tidyverse, #packages for data science
+               plm, #estimation of linear panel models
+               ggplot2,  #creating graphics
+               lmtest, #testing linear regression Models
+               tseries, #Augmented Dickey-Fuller Test
+               clubSandwich, #robustness checks
+               sandwich, #robustness checks
+               stargazer, #formatting tables for publications
+               devtools, #web developer tools 
+               rmarkdown, #reproducibility
+               tidyr,  #changing the shape and hierarchy of a data set
+               dplyr, #grammar of data manipulation
+               Synth, #importing and exporting
+               SCtools, #extensions for Synthetic Controls Analysis
+               MSCMT,  #Multivariate Synthetic Control Method
+               gsynth, #generalized Synthetic Control Method
+               panelView, #visualize data panels
+               httr, # call url
+               jsonlite, # use API
+               DataExplorer, # Automated Exploratory Data Analysis
+               kableExtra, #formatting tables
+               webshot, #enable table exportation with kableExtra
+               ggrepel, #labels with ggplot
+               ggthemes, #different graph themes for ggplot
+               ggpubr, #put figures together
+               car, # check multicollinearity
+               lmtest, # robust standard errors
+               #scpi, #  SCM with Multiple Treated Units and Staggered Adoption
+               synthdid, # Synthetic Difference in Differences Estimation
+               plm, # linear models for panel data
+               abind, # Combine Multidimensional Arrays
+               data.table) # Fast aggregation of large data
+
+```
+
+
+# Load Files
+```{r}
+
+df_pre <- read.csv("ANEEL_ResidentialTariff_1997-2010.csv")
+
+df_pos <- read.csv("ANEEL_ResidentialTariff_2010-2024.csv")
+
+```
+
+# Selecting columns from "df-POS"
+```{r}
+
+#Selecting the columns 
+df_pos <- df_pos[, c(1,3,16)]
+
+#Rename Columns
+colnames(df_pos) <- c("ID", "year", "B1_RESIDENCIAL")
+
+
+```
+
+# Selecting only year, and in case they repeat, average the variable B1_RESIDENCIAL
+```{r}
+
+# Convert the "year" column to Date format and extract the year
+df_pos <- df_pos %>%
+  mutate(year = as.numeric(format(as.Date(year, format = "%m/%d/%Y"), "%Y")))
+
+# Group by "ID" and "year", then calculate the average of "B1_RESIDENCIAL"
+df_result <- df_pos %>%
+  group_by(ID, year) %>%
+  summarise(B1_RESIDENCIAL = mean(B1_RESIDENCIAL, na.rm = TRUE))
+
+```
+
+#Merge "df_pre" and "df_pos"
+```{r}
+
+# Filter the df_pre dataset to include only rows from 1997 to 2009
+df_pre_filtered <- df_pre %>%
+  filter(year >= 1997 & year <= 2009)
+
+# Perform the left join by both 'ID' and 'Year'
+df_merged <- merge(df_pre_filtered, df_pos, by = c("ID", "year"), all.x = TRUE)
+
+#Selecting the columns 
+df_merged <- df_merged[, c(1:3)]
+
+#Rename Columns
+colnames(df_merged) <- c("ID", "year", "B1_RESIDENCIAL")
+
+
+```
+
+
+# Check the names of the companies before-2010
+```{r}
+
+unique_ids <- unique(df_pre$ID)
+
+print(unique_ids)
+
+```
+
