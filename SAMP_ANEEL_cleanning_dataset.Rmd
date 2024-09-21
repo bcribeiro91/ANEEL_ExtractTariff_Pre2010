@@ -1,0 +1,491 @@
+---
+title: "ANEEL_SAMP_cleanning_dataset"
+author: "Beatriz Couto Ribeiro"
+date: "2024-09-20"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+## 1.1. Set Folder
+```{r}
+
+getwd()
+
+setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/SAMP_ANEEL")
+
+```
+
+
+## 1.3. Install and load packages
+```{r}
+
+if (!require("pacman")) install.packages("pacman") #pacman will not accept a character vector so the same packages are repeated
+
+pacman::p_load(tidyverse, #packages for data science
+               plm, #estimation of linear panel models
+               ggplot2,  #creating graphics
+               lmtest, #testing linear regression Models
+               tseries, #Augmented Dickey-Fuller Test
+               clubSandwich, #robustness checks
+               sandwich, #robustness checks
+               stargazer, #formatting tables for publications
+               devtools, #web developer tools 
+               rmarkdown, #reproducibility
+               tidyr,  #changing the shape and hierarchy of a data set
+               dplyr, #grammar of data manipulation
+               Synth, #importing and exporting
+               SCtools, #extensions for Synthetic Controls Analysis
+               MSCMT,  #Multivariate Synthetic Control Method
+               gsynth, #generalized Synthetic Control Method
+               panelView, #visualize data panels
+               httr, # call url
+               jsonlite, # use API
+               DataExplorer, # Automated Exploratory Data Analysis
+               kableExtra, #formatting tables
+               webshot, #enable table exportation with kableExtra
+               ggrepel, #labels with ggplot
+               ggthemes, #different graph themes for ggplot
+               ggpubr, #put figures together
+               car, # check multicollinearity
+               lmtest, # robust standard errors
+               #scpi, #  SCM with Multiple Treated Units and Staggered Adoption
+               synthdid, # Synthetic Difference in Differences Estimation
+               plm, # linear models for panel data
+               abind, # Combine Multidimensional Arrays
+               readxl, #read xls files
+               data.table) # Fast aggregation of large data
+
+```
+
+
+# Load Files
+```{r}
+
+samp_1991_2002 <- read_excel("samp_aneel_1991-2002.xlsx")
+
+samp_2003_2007 <- read_excel("samp_aneel_2003-2007.xlsx")
+
+samp_2008_2011 <- read_excel("samp_aneel_2008-2011.xlsx")
+
+samp_2012_2015 <- read_excel("samp_aneel_2012-2015.xlsx")
+
+samp_2016_2020 <- read_excel("samp_aneel_2016-2020.xlsx")
+
+samp_2021_2023 <- read_excel("samp_aneel_2021-2023.xlsx")
+
+```
+
+# Full merge of 2003-2023 data
+```{r}
+
+# Perform the rbind to merge the datasets
+samp_2003_2023 <- rbind(samp_2003_2007, samp_2008_2011, samp_2012_2015, 
+                            samp_2016_2020, samp_2021_2023)
+
+```
+
+# format the database samp_1991_2002 to have a similar layout to samp_2003_2023
+```{r}
+
+#Convert the date column to Date type
+samp_1991_2002$MêsAno <- as.Date(samp_1991_2002$MêsAno)
+
+# Extract the year and month and create new columns
+samp_1991_2002 <- samp_1991_2002 %>%
+  mutate(
+    year = year(MêsAno),
+    month = month(MêsAno))
+
+# Remove the "MêsAno" column
+samp_1991_2002$MêsAno <- NULL
+
+
+```
+
+# Change Column Names of both datasets, and create a variable "Tax" in samp_2003_2023, and the "RevenueTax" in samp_1991_2002
+```{r}
+
+colnames(samp_1991_2002) <- c("Tension", "Firm", "Class", "Consumers", "ConsumptionEnergy", "Demand", "Revenue", "Tax", "Year", "Month")
+
+
+colnames(samp_2003_2023) <- c("Firm", "Year", "Month", "Tension", "Class", "ConsumptionEnergy", "Revenue", "RevenueTax", "Consumers")
+
+
+samp_2003_2023 <- samp_2003_2023 %>% mutate(Tax = RevenueTax - Revenue)
+
+samp_1991_2002 <- samp_1991_2002 %>% mutate(RevenueTax = Tax + Revenue)
+
+```
+
+
+# Temporarily removing the variable "Demand" from samp_1991_2002, because it is not clear what this number means
+```{r}
+
+# Remove the "Demand" column
+samp_1991_2002$Demand <- NULL
+
+```
+
+
+
+# Merging both datasets: samp_2003_2023 and samp_1991_2002
+```{r}
+
+# Changing "Year" and "Month" variable to numeric, to enable merging 
+samp_2003_2023$Year <- as.numeric(samp_2003_2023$Year)
+samp_2003_2023$Month <- as.numeric(samp_2003_2023$Month)
+
+
+# Perform the rbind to merge the datasets
+samp_1991_2023 <- full_join(samp_2003_2023, samp_1991_2002, by = c("Firm", "Year", "Month", "Tension", "Class", "ConsumptionEnergy", "Consumers", "Revenue", "RevenueTax", "Tax"))
+
+```
+
+# Rename Variable on Tension
+```{r}
+
+print(unique(samp_1991_2023$Tension))
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "B1 - Residencial Baixa Renda(Consumo Mensal Superior ao Limite Regional de 200kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 831 a 1.245 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 591 a 1.135 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 342 a 655 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 137 a 341 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 1.437 a 2.154 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal até 136 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 1.136 a 1.436 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 656 a 830 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 342 a 590 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 237 a 341 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 137 a 236 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1- Baixa Renda - Consumo mensal superior a 30 kWh e inferior ou igual a 100 kWh (RES. 945/2010)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1- Baixa Renda - Consumo mensal superior a 100 kWh e inferior ou igual a 220 kWh (RES. 945/2010)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1- Baixa Renda - Consumo mensal inferior ou igual a 30 kWh (RES. 945/2010)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1- Baixa Renda - Consumo mensal superior a 220 kWh (RES. 945/2010)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda(Consumo Mensal Superior ao Limite Regional de 160kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 161 a 180 kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 181 a 200 kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 201 a 220 kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda(Consumo Mensal Superior ao Limite Regional de 220kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 141 a 150 kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda(Consumo Mensal Superior ao Limite Regional de 140kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 101 a 140 kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 80 a 100 kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal até 30 kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda(Consumo Mensal Superior ao Limite Regional de 180kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal superior a 30 kWh e inferior a 80kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 151 a 160 kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 1.437 a  2.154 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal de 656 a  830 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal superior a 100 até 200 kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda (Consumo mensal  de 1.136 a  1.436 Ah)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa Renda(Consumo Mensal Superior ao Limite Regional de 150kWh)" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B1 - Residencial Baixa" ~ "B1 - Residencial Baixa Renda",
+    Tension == "B" ~ "B1",
+    Tension == "B1 - Residencial" ~ "B1",
+    TRUE ~ Tension
+  ))
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "B4b - Iluminação Pública - Bulbo de Lâmpada" ~ "B4",
+    Tension == "B4a - Iluminação Pública - Rede de Distribuição" ~ "B4",
+    Tension == "B4c - Iluminação Pública - Nível de IP acima do Padrão" ~ "B4",
+    TRUE ~ Tension
+  ))
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "B2 - Rural" ~ "B2",
+    Tension == "B2 - Serviço Público de Irrigação" ~ "B2",
+    Tension == "B2 - Cooperativa de Eletrificação Rural" ~ "B2",
+    TRUE ~ Tension
+  ))
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "A4 (2,3 a 25 kV)" ~ "A4 (2,3 a 25 kV)",
+    Tension == "A4 - Cooperativa de Eletrificação Rural (2,3 kV a 25 kV)" ~ "A4 (2,3 a 25 kV)",
+    Tension == "A4a - Cooperativa de Eletrificação Rural Tipo 1" ~ "A4 (2,3 a 25 kV)",
+    Tension == "A4 - Serviço Público de Irrigação (2,3 kV a 25 kV)" ~ "A4 (2,3 a 25 kV)",
+    Tension == "A4b - Cooperativa de Eletrificação Rural Tipo 2" ~ "A4 (2,3 a 25 kV)",
+    Tension == "A4c - Cooperativa de Eletrificação Rural Tipo 32" ~ "A4 (2,3 a 25 kV)",
+    Tension == "A4c - Cooperativa de Eletrificação Rural Tipo 3" ~ "A4 (2,3 a 25 kV)",
+    Tension == "A4" ~ "A4 (2,3 a 25 kV)",
+    TRUE ~ Tension
+  ))
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "A2 (88 a 138 kV)" ~ "A2 (88 a 138 kV)",
+    Tension == "A2 - Cooperativa de Eletrificação Rural (88 a 138 kV)" ~ "A2 (88 a 138 kV)",
+    Tension == "A2  Serviço Público de Irrigação" ~ "A2 (88 a 138 kV)",
+    Tension == "A2" ~ "A2 (88 a 138 kV)",
+    TRUE ~ Tension
+  ))
+
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "A3a (30 kV a 44 kV)" ~ "A3a (30 kV a 44 kV)",
+    Tension == "A3a - Serviço Público de Irrigação (30 kV a 44 kV)" ~ "A3a (30 kV a 44 kV)",
+    Tension == "A3a - Cooperativa de Eletrificação Rural (30 kV a 44 kV)" ~ "A3a (30 kV a 44 kV)",
+    Tension == "A3a" ~ "A3a (30 kV a 44 kV)",
+    TRUE ~ Tension
+  ))
+ 
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "A3 ( 69 kV)" ~ "A3 (69 kV)",
+    Tension == "A3 - Cooperativa de Eletrificação Rural (69 kV)" ~ "A3 (69 kV)",
+    Tension == "A3 - Serviço Público de Irrigação (69 kV))" ~ "A3 (69 kV)",
+    Tension == "A3 - Serviço Público de Irrigação (69 kV)" ~ "A3a (30 kV a 44 kV)",
+    Tension == "A3" ~ "A3a (30 kV a 44 kV)",
+    Tension == "A3 (69 kV)" ~ "A3a (30 kV a 44 kV)",
+    TRUE ~ Tension
+  ))
+
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "B3 - Classe Comercial (Consumo mensal até 820 Ah)" ~ "B3",
+    Tension == "B3 - Classe Comercial  (Consumo mensal até 1.436 Ah)" ~ "B3",
+    Tension == "B3 - Demais Classes" ~ "B3",
+    TRUE ~ Tension
+  ))
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "A1" ~ "A1 (230 kV ou mais)",
+    TRUE ~ Tension
+  ))   
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tension = case_when(
+    Tension == "AS (Subterrâneo)" ~ "AS",
+    TRUE ~ Tension
+  )) 
+                      
+
+```
+
+# Rename Variable in Class
+```{r}
+
+print(unique(samp_1991_2023$Class))
+
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Class = case_when(
+    Class == "Rural Aquicultor" ~ "Rural",
+    Class == "Rural Irrigante" ~ "Rural",
+    TRUE ~ Class
+  )) 
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Class = case_when(
+    Class == "Comercial, Serviços e Outras" ~ "Comercial",
+    TRUE ~ Class
+  )) 
+
+samp_1991_2023 <- samp_1991_2023 %>%
+  mutate(Class = case_when(
+    Class == "Serviço Público (água, esgoto e saneamento)" ~ "Serviço Público",
+    Class == "Serviço Público (tração elétrica)" ~ "Serviço Público",
+    TRUE ~ Class
+  )) 
+        
+
+```
+
+# Eliminate lines that start with "Applied filters:" and "NA"
+```{r}
+samp_1991_2023 <- samp_1991_2023 %>%
+  filter(!grepl("^Applied filters:", Firm))
+
+# Check for NA's
+samp_1991_2023 <- samp_1991_2023 %>%
+  filter(!is.na(Firm))
+ 
+num_na_firm <- sum(is.na(samp_1991_2023$Firm))
+
+
+```
+
+
+```{r}
+
+# Substitution Vector
+samp_1991_2023 <- samp_1991_2023 %>%
+ mutate(Firm = case_when(
+    Firm == "ELETROPAULO - ELETROPAULO METROPOLITANA ELETRICIDADE DE SAO PAULO S.A." ~ "ELETROPAULO",
+    Firm == "LIGHT SESA - LIGHT SERVICOS DE ELETRICIDADE S A" ~ "LIGHT",
+    Firm == "CEMIG-D - CEMIG DISTRIBUIÇÃO S.A" ~ "CEMIG-D",
+    Firm == "CPFL-PAULISTA - COMPANHIA PAULISTA DE FORÇA E LUZ" ~ "CPFL-PAULISTA",
+    Firm == "CEMIG - COMPANHIA ENERGÉTICA DE MINAS GERAIS" ~ "CEMIG",
+    Firm == "COPEL-DIS - COPEL DISTRIBUIÇÃO S.A." ~ "COPEL-DIS",
+    Firm == "CELESC-DIS - CELESC DISTRIBUICAO S.A" ~ "CELESC-DIS",
+    Firm == "CELESC - CENTRAIS ELÉTRICAS SANTA CATARINA S/A" ~ "CELESC",
+    Firm == "ENEL RJ - AMPLA ENERGIA E SERVICOS S.A." ~ "ENEL RJ",
+    Firm == "COELBA - COMPANHIA DE ELETRICIDADE DO ESTADO DA BAHIA COELBA" ~ "COELBA",
+    Firm == "ELEKTRO - ELEKTRO REDES S.A." ~ "ELEKTRO",
+    Firm == "CELPE - COMPANHIA ENERGÉTICA DE PERNAMBUCO" ~ "CELPE",
+    Firm == "CPFL- PIRATININGA - COMPANHIA PIRATININGA DE FORÇA E LUZ" ~ "CPFL- PIRATININGA",
+    Firm == "EDP SP - EDP SÃO PAULO DISTRIBUIÇÃO DE ENERGIA S.A." ~ "EDP SP",
+    Firm == "CELG - COMPANHIA ENERGÉTICA DE GOIÁS" ~ "CELG",
+    Firm == "EQUATORIAL GO - ENERGIA GOIAS\tEQUATORIAL GOIAS DISTRIBUIDORA DE ENERGIA S/A" ~ "EQUATORIAL GO",
+    Firm == "CEEE - COMPANHIA ESTADUAL DE ENERGIA ELÉTRICA" ~ "CEEE",
+    Firm == "CEEE-D - COMPANHIA ESTADUAL DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA - CEEE-D" ~ "CEEE-D",
+    Firm == "RGE SUL - RGE SUL DISTRIBUIDORA DE ENERGIA S.A." ~ "RGE SUL",
+    Firm == "ENEL CE - COMPANHIA ENERGETICA DO CEARA" ~ "ENEL CE",
+    Firm == "RGE - RIO GRANDE ENERGIA SA" ~ "RGE",
+    Firm == "EDP ES - EDP ESPÍRITO SANTO DISTRIBUIÇÃO DE ENERGIA S.A." ~ "EDP ES",
+    Firm == "EMT - ENERGISA MATO GROSSO - DISTRIBUIDORA DE ENERGIA S.A." ~ "EMT",
+    Firm == "EQUATORIAL PA - EQUATORIAL PARÁ DISTRIBUIDORA DE ENERGIA S.A." ~ "EQUATORIAL PA",
+    Firm == "CEBDIS - NEOENERGIA DISTRIBUIÇÃO BRASÍLIA S.A." ~ "CEBDIS",
+    Firm == "CEB - COMPANHIA ENERGÉTICA DE BRASÍLIA" ~ "CEB",
+    Firm == "EMS - ENERGISA MATO GROSSO DO SUL - DISTRIBUIDORA DE ENERGIA S.A." ~ "EMS",
+    Firm == "MANAUS ENERGIA - MANAUS ENERGIA S/A" ~ "MANAUS ENERGIA",
+    Firm == "EQUATORIAL MA - EQUATORIAL MARANHÃO DISTRIBUIDORA DE ENERGIA S.A" ~ "EQUATORIAL MA",
+    Firm == "COSERN - COMPANHIA ENERGÉTICA DO RIO GRANDE DO NORTE COSERN" ~ "COSERN",
+    Firm == "EQUATORIAL PI - EQUATORIAL PIAUÍ DISTRIBUIDORA DE ENERGIA S.A" ~ "EQUATORIAL PI",
+    Firm == "SAELPA - SAELPA S/A DE ELETRIFICAÇÃO DA PARAÍBA" ~ "SAELPA",
+    Firm == "EQUATORIAL AL - EQUATORIAL ALAGOAS DISTRIBUIDORA DE ENERGIA S.A." ~ "EQUATORIAL AL",
+    Firm == "ERO - ENERGISA RONDONIA - DISTRIBUIDORA DE ENERGIA S.A" ~ "ERO",
+    Firm == "ETO - ENERGISA TOCANTINS DISTRIBUIDORA DE ENERGIA S.A." ~ "ETO",
+    Firm == "ENERGIPE - EMPRESA ENERGÉTICA DE SERGIPE S/A." ~ "ENERGIPE",
+    Firm == "CFLCL - COMPANHIA FORÇA E LUZ CATAGUAZES-LEOPOLDINA" ~ "CFLCL",
+    Firm == "ESS - ENERGISA SUL-SUDESTE - DISTRIBUIDORA DE ENERGIA S.A." ~ "ESS",
+    Firm == "CAIUÁ - CAIUÁ SERVIÇOS DE ELETRICIDADE S/A." ~ "CAIUA",
+    Firm == "CPFL SANTA CRUZ - COMPANHIA LUZ E FORÇA SANTA CRUZ" ~ "CPFL SANTA CRUZ",
+    Firm == "EAC - ENERGISA ACRE - DISTRIBUIDORA DE ENERGIA S.A" ~ "EAC",
+    Firm == "EDEVP - EMPRESA DE DISTRIBUIÇÃO DE ENERGIA VALE PARANAPANEMA S.A." ~ "EDEVP",
+    Firm == "DMED - DME DISTRIBUIÇÃO S.A. - DMED" ~ "DMED",
+    Firm == "CEA - COMPANHIA DE ELETRICIDADE DO AMAPÁ" ~ "CEA",
+    Firm == "EEB - EMPRESA ELETRICA BRAGANTINA S A" ~ "EEB",
+    Firm == "EEVP - EMPRESA DE ELETRICIDADE VALE PARANAPANEMA S/A" ~ "EEVP",
+    Firm == "CEAM - COMPANHIA ENERGÉTICA DO AMAZONAS" ~ "CEAM",
+    Firm == "BOA VISTA - RORAIMA ENERGIA S.A." ~ "BOA VISTA",
+    Firm == "CNEE - COMPANHIA NACIONAL DE ENERGIA ELÉTRICA" ~ "CNEE",
+    Firm == "CENF - COMPANHIA DE ELETRICIDADE NOVA FRIBURGO" ~ "CENF",
+    Firm == "CPFL JAGUARI - COMPANHIA JAGUARI DE ENERGIA" ~ "CPFL JAGUARI",
+    Firm == "ELFSM - EMPRESA LUZ E FORÇA SANTA MARIA S/A" ~ "ELFSM",
+    Firm == "CELB - COMPANHIA ENERGÉTICA DA BORBOREMA" ~ "CELB",
+    Firm == "CPFL SUL PAULISTA - COMPANHIA SUL PAULISTA DE ENERGIA" ~ "CPFL SUL PAULISTA",
+    Firm == "CPFL LESTE PAULISTA - COMPANHIA LESTE PAULISTA DE ENERGIA" ~ "CPFL LESTE PAULISTA",
+    Firm == "COCEL - COMPANHIA CAMPOLARGUENSE DE ENERGIA COCEL" ~ "COCEL",
+    Firm == "CPFL MOCOCA - COMPANHIA LUZ E FORÇA DE MOCOCA" ~ "CPFL MOCOCA",
+    Firm == "CFLO - COMPANHIA FORÇA E LUZ DO OESTE" ~ "CFLO",
+    Firm == "DCELT - DCELT DISTRIBUIDORA CATARINENSE DE ENERGIA ELETRICA S/A" ~ "DCELT",
+    Firm == "DEMEI - DEPARTAMENTO MUNICIPAL DE ENERGIA DE IJUI" ~ "DEMEI",
+    Firm == "COOPERALIANÇA - COOPERATIVA ALIANCA" ~ "COOPERALIANÇA",
+    Firm == "SULGIPE - COMPANHIA SUL SERGIPANA DE ELETRICIDADE" ~ "SULGIPE",
+    Firm == "ELETROCAR - CENTRAIS ELÉTRICAS DE CARAZINHO SA" ~ "ELETROCAR",
+    Firm == "EFLUL - EMPRESA FORÇA E LUZ DE URUSSANGA LTDA" ~ "EFLUL",
+    Firm == "CHESP - COMPANHIA HIDROELÉTRICA SÃO PATRÍCIO - CHESP" ~ "CHESP",
+    Firm == "HIDROPAN - HIDROPAN DISTRIBUIÇÃO DE ENERGIA S.A." ~ "HIDROPAN",
+    Firm == "UHENPAL - NOVA PALMA ENERGIA LTDA" ~ "UHENPAL",
+    Firm == "MUXENERGIA - MUXFELDT MARIN E CIA LTDA" ~ "MUXENERGIA",
+    Firm == "CERR - COMPANHIA ENERGÉTICA DE RORAIMA" ~ "CERR",
+    Firm == "PACTO ENERGIA PR - FORCA E LUZ CORONEL VIVIDA LTDA" ~ "PACTO ENERGIA PR",
+    Firm == "JARI - JARI CELULOSE, PAPEL E EMBALAGENS S.A." ~ "JARI",
+    Firm == "EFLJC - EMPRESA FORÇA E LUZ JOÃO CESA LTDA" ~ "EFLJC",
+    Firm == "AME - AMAZONAS ENERGIA S.A." ~ "AME",
+    Firm == "EPB - ENERGISA PARAÍBA - DISTRIBUIDORA DE ENERGIA S.A" ~ "EPB",
+    Firm == "ESE - ENERGISA SERGIPE - DISTRIBUIDORA DE ENERGIA S.A" ~ "ESE",
+    Firm == "ENF - ENERGISA NOVA FRIBURGO - DISTRIBUIDORA DE ENERGIA S.A" ~ "ENF",
+    Firm == "EBO - ENERGISA BORBOREMA - DISTRIBUIDORA DE ENERGIA S.A" ~ "EBO",
+    Firm == "COPREL - COPREL COOPERATIVA DE ENERGIA" ~ "COPREL",
+    Firm == "COOPERA - COOPERATIVA PIONEIRA DE ELETRIFICAÇÃO - COOPERA" ~ "COOPERA",
+    Firm == "CERTEL ENERGIA - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA TEUTÔNIA" ~ "CERTEL ENERGIA",
+    Firm == "CETRIL - COOPERATIVA DE ELETRIFICACAO DE IBIUNA E REGIAO" ~ "CETRIL",
+    Firm == "CERSUL - CERSUL - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA" ~ "CERSUL",
+    Firm == "CERMOFUL - COOPERATIVA FUMACENSE DE ELETRICIDADE - CERMOFUL ENERGIA" ~ "CERMOFUL",
+    Firm == "CERMISSÕES - COOPERATIVA DE DISTRIBUIÇÃO E GERAÇÃO DE ENERGIA DAS MISSÕES - CERMISSÕES" ~ "CERMISSOES",
+    Firm == "COOPERLUZ - COOPERLUZ - COOPERATIVA DISTRIBUIDORA DE ENERGIA FRONTEIRA NOROESTE" ~ "COOPERLUZ",
+    Firm == "CRELUZ-D - CRELUZ - COOPERATIVA DE DISTRIBUICAO DE ENERGIA" ~ "CRELUZ-D",
+    Firm == "CERILUZ - COOPERATIVA REGIONAL DE ENERGIA E DESENVOLVIMENTO IJUÍ LTDA" ~ "CERILUZ",
+    Firm == "CERTAJA - COOPERATIVA REGIONAL DE ENERGIA TAQUARI JACUÍ" ~ "CERTAJA",
+    Firm == "CERIPA - COOPERATIVA DE ELETRIFICAÇÃO RURAL DE ITAÍ PARANAPANEMA AVARÉ LTDA" ~ "CERIPA",
+    Firm == "CERGAL - COOPERATIVA DE ELETRIFICAÇÃO ANITA GARIBALDI" ~ "CERGAL",
+    Firm == "CERBRANORTE - COOPERATIVA DE ELETRIFICAÇÃO DE BRAÇO DO NORTE" ~ "CERBRANORTE",
+    Firm == "CERIM - COOPERATIVA DE ELETRIFICAO E DESENVOLVIMENTO DA REGIAO DE ITU MAIRINQUE" ~ "CERIM",
+    Firm == "CERAÇÁ - CERACA - COOPERATIVA DISTRIBUIDORA DE ENERGIA VALE DO ARACA" ~ "CERACA",
+    Firm == "CERPALO - COOPERATIVA DE ELETRICIDADE DE PAULO LOPES" ~ "CERPALO",
+    Firm == "COOPERCOCAL - COOPERATIVA ENERGÉTICA COCAL" ~ "COOPERCOCAL",
+    Firm == "COORSEL - COOPERATIVA REGIONAL SUL DE ELETRIFICAÇÃO RURAL" ~ "COORSEL",
+    Firm == "CERGAPA - COOPERATIVA DE ELETRICIDADE GRÃO PARÁ" ~ "CERGAPA",
+    Firm == "CRERAL - CRERAL - COOPERATIVA REGIONAL DE ELETRIFICAÇÃO RURAL DO ALTO URUGUAI" ~ "CRERAL",
+    Firm == "CERTREL - COOPERATIVA DE ENERGIA TREVISO" ~ "CERTREL",
+    Firm == "CERPRO - COOPERATIVA DE ELETRIFICAÇÃO RURAL DA REGIÃO DE PROMISSÃO" ~ "CERPRO",
+    Firm == "CERIS - COOPERATIVA DE ELETRIFICAÇÃO DA REGIÃO DE ITAPECERICA DA SERRA" ~ "CERIS",
+    Firm == "CEJAMA - CEJAMA - COOPERATIVA DE ELETRICIDADE JACINTO MACHADO" ~ "CEJAMA",
+    Firm == "CEPRAG - COOPERATIVA DE ELETRICIDADE PRAIA GRANDE" ~ "CEPRAG",
+    Firm == "CEREJ - COOPERATIVA DE PRESTAÇÃO DE SERVIÇOS PÚBLICOS DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA SENADOR ESTEVES JÚNIOR - CEREJ" ~ "CEREJ",
+    Firm == "CERRP - COOPERATIVA DE ELETRIFICAÇÃO E DESENVOLVIMENTO DA REGIÃO DE SÃO JOSÉ DO RIO PRETO-CERRP" ~ "CERRP",
+    Firm == "CERES - COOPERATIVA DE ELETRIFICACAO RURAL DE RESENDE LTDA" ~ "CERES",
+    Firm == "CERAL-DIS - COOPERATIVA DE DISTRIBUICAO DE ENERGIA ELETRICA DE ARAPOTI" ~ "CERAL-DIS",
+    Firm == "CERGRAL - COOPERATIVA DE ELETRICIDADE DE GRAVATAL" ~ "CERGRAL",
+    Firm == "CEDRI - COOPERATIVA DE ELETRIFICAÇÃO E DISTRIBUIÇÃO DA REGIÃO DE ITARIRI" ~ "CEDRI",
+    Firm == "COOPERMILA - COOPERATIVA DE ELETRIFICAÇÃO LAURO MULLER" ~ "COOPERMILA",
+    Firm == "CERNHE - COOPERATIVA DE ELETRIFICAÇÃO E DESENVOLVIMENTO RURAL DA REGIÃO DE NOVO HORIZONTE" ~ "CERNHE",
+    Firm == "CERMC - COOPERATIVA DE ELETRIFICAÇÃO E DESENVOLVIMENTO DA REGIÃO DE MOGI DAS CRUZES" ~ "CERMC",
+    Firm == "CERAL ANITÁPOLIS - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA DE ANITÁPOLIS - CERAL" ~ "CERAL ANITÁPOLIS",
+    Firm == "CERCOS - COOPERATIVA DE ELETRIFICACAO E DESENVOLVIMENTO RURAL CENTRO SUL DE SERGIPE LTDA" ~ "CERCOS",
+    Firm == "CEGERO - COOPERATIVA DE ELETRICIDADE DE SÃO LUDGERO" ~ "CEGERO",
+    Firm == "CELETRO - COOPERATIVA DE ELETRIFICAÇÃO CENTRO JACUÍ LTDA" ~ "CELETRO",
+    Firm == "CERCI - COOPERATIVA DE ELETRIFICAÇÃO RURAL CACHOEIRAS ITABORAÍ LTDA" ~ "CERCI",
+    Firm == "CEMIRIM - COOPERATIVA DE ELETRIFICAÇÃO E DESENVOLVIMENTO DA REGIÃO DE MOGI MIRIM" ~ "CEMIRIM",
+    Firm == "CODESAM - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA SANTA MARIA" ~ "CODESAM",
+    Firm == "CERTHIL - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ENTRE RIOS LTDA" ~ "CERTHIL",
+    Firm == "CERFOX - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA FONTOURA XAVIER" ~ "CERFOX",
+    Firm == "CASTRO - DIS - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA DE CASTRO" ~ "CASTRO - DIS",
+    Firm == "COOPERNORTE - COOPERATIVA REGIONAL DE DISTRIBUIÇÃO DE ENERGIA DO LITORAL NORTE - COOPERNORTE" ~ "COOPERNORTE",
+    Firm == "CERAL ARARUAMA - COOPERATIVA DE ELETRIFICAÇÃO RURAL DE ARARUAMA LTDA" ~ "CERAL ARARUAMA",
+    Firm =="COOPERZEM - COOPERZEM COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA" ~  "COOPERZEM",
+    Firm =="CERVAM - COOPERATIVA DE ENERGIZAÇÃO E DE DESENVOLVIMENTO DO VALE DO MOGI" ~  "CERVAM",
+    Firm =="COOPERSUL - COOPERATIVA REGIONAL DE ELETRIFICAÇÃO RURAL FRONTEIRA SUL LTDA" ~  "COOPERSUL",
+    Firm =="CERSAD DISTRIBUIDORA - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA SALTO DONNER" ~  "CERSAD DISTRIBUIDORA",
+    TRUE ~ Firm
+  )) 
+
+
+
+```
+
+
+```{r}
+
+# # Selecionar as variáveis "Firm", "Year", "Month" e "Consumers"
+# samp_selected <- samp_1991_2023 %>%
+#   select(Firm, Year, Month, Consumers)
+# 
+# # Criar uma nova coluna combinando "Year" e "Month"
+# samp_selected <- samp_selected %>%
+#   unite("Year_Month", Year, Month, sep = "_")
+# 
+# # Transformar o dataset em formato wide
+# samp_wide <- samp_selected %>%
+#   pivot_wider(names_from = Year_Month, values_from = Consumers)
+
+
+
+```
+
+
+
+```{r}
+
+write.csv(samp_1991_2023, "ANEEL_SAMP_1991-2023.csv", row.names = FALSE)
+
+
+
+print(unique(samp_1991_2023$Firm))
+
+```
+
