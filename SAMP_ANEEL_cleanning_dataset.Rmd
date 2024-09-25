@@ -55,7 +55,15 @@ pacman::p_load(tidyverse, #packages for data science
                plm, # linear models for panel data
                abind, # Combine Multidimensional Arrays
                readxl, #read xls files
-               data.table) # Fast aggregation of large data
+               data.table, # Fast aggregation of large data
+               basedosdados) 
+
+```
+
+## 1.3. set the google cloud console ID and project
+```{r}
+
+set_billing_id("inflation-IPCA")
 
 ```
 
@@ -74,6 +82,9 @@ samp_2012_2015 <- read_excel("samp_aneel_2012-2015.xlsx")
 samp_2016_2020 <- read_excel("samp_aneel_2016-2020.xlsx")
 
 samp_2021_2023 <- read_excel("samp_aneel_2021-2023.xlsx")
+
+# Names before and after privatization
+df_names <- read.csv("names_before_after_privatization_BR.csv")
 
 ```
 
@@ -127,7 +138,6 @@ samp_1991_2002 <- samp_1991_2002 %>% mutate(RevenueTax = Tax + Revenue)
 samp_1991_2002$Demand <- NULL
 
 ```
-
 
 
 # Merging both datasets: samp_2003_2023 and samp_1991_2002
@@ -284,27 +294,23 @@ samp_1991_2023 <- samp_1991_2023 %>%
   mutate(Class = case_when(
     Class == "Rural Aquicultor" ~ "Rural",
     Class == "Rural Irrigante" ~ "Rural",
-    TRUE ~ Class
-  )) 
-
-samp_1991_2023 <- samp_1991_2023 %>%
-  mutate(Class = case_when(
     Class == "Comercial, Serviços e Outras" ~ "Comercial",
+    Class == "Serviço Público (água, esgoto e saneamento)" ~ "Public Service",
+    Class == "Serviço Público (tração elétrica)" ~ "Public Service",
+    Class == "Consumo Próprio" ~ "Own Consumption",
+    Class == "Iluminação Pública" ~ "Public Lighting",
+    Class == "Poder Público" ~ "Public Government",
+    Class == "Serviço Público" ~ "Public Service",
+    Class == "Residencial" ~ "Residential",
     TRUE ~ Class
   )) 
 
-samp_1991_2023 <- samp_1991_2023 %>%
-  mutate(Class = case_when(
-    Class == "Serviço Público (água, esgoto e saneamento)" ~ "Serviço Público",
-    Class == "Serviço Público (tração elétrica)" ~ "Serviço Público",
-    TRUE ~ Class
-  )) 
-        
 
 ```
 
 # Eliminate lines that start with "Applied filters:" and "NA"
 ```{r}
+
 samp_1991_2023 <- samp_1991_2023 %>%
   filter(!grepl("^Applied filters:", Firm))
 
@@ -314,149 +320,108 @@ samp_1991_2023 <- samp_1991_2023 %>%
  
 num_na_firm <- sum(is.na(samp_1991_2023$Firm))
 
-
 ```
 
-
+# Merge the datasets: "df_names" and "samp_1991_2023_names"
 ```{r}
 
-# Substitution Vector
-samp_1991_2023 <- samp_1991_2023 %>%
- mutate(Firm = case_when(
-    Firm == "ELETROPAULO - ELETROPAULO METROPOLITANA ELETRICIDADE DE SAO PAULO S.A." ~ "ELETROPAULO",
-    Firm == "LIGHT SESA - LIGHT SERVICOS DE ELETRICIDADE S A" ~ "LIGHT",
-    Firm == "CEMIG-D - CEMIG DISTRIBUIÇÃO S.A" ~ "CEMIG-D",
-    Firm == "CPFL-PAULISTA - COMPANHIA PAULISTA DE FORÇA E LUZ" ~ "CPFL-PAULISTA",
-    Firm == "CEMIG - COMPANHIA ENERGÉTICA DE MINAS GERAIS" ~ "CEMIG",
-    Firm == "COPEL-DIS - COPEL DISTRIBUIÇÃO S.A." ~ "COPEL-DIS",
-    Firm == "CELESC-DIS - CELESC DISTRIBUICAO S.A" ~ "CELESC-DIS",
-    Firm == "CELESC - CENTRAIS ELÉTRICAS SANTA CATARINA S/A" ~ "CELESC",
-    Firm == "ENEL RJ - AMPLA ENERGIA E SERVICOS S.A." ~ "ENEL RJ",
-    Firm == "COELBA - COMPANHIA DE ELETRICIDADE DO ESTADO DA BAHIA COELBA" ~ "COELBA",
-    Firm == "ELEKTRO - ELEKTRO REDES S.A." ~ "ELEKTRO",
-    Firm == "CELPE - COMPANHIA ENERGÉTICA DE PERNAMBUCO" ~ "CELPE",
-    Firm == "CPFL- PIRATININGA - COMPANHIA PIRATININGA DE FORÇA E LUZ" ~ "CPFL- PIRATININGA",
-    Firm == "EDP SP - EDP SÃO PAULO DISTRIBUIÇÃO DE ENERGIA S.A." ~ "EDP SP",
-    Firm == "CELG - COMPANHIA ENERGÉTICA DE GOIÁS" ~ "CELG",
-    Firm == "EQUATORIAL GO - ENERGIA GOIAS\tEQUATORIAL GOIAS DISTRIBUIDORA DE ENERGIA S/A" ~ "EQUATORIAL GO",
-    Firm == "CEEE - COMPANHIA ESTADUAL DE ENERGIA ELÉTRICA" ~ "CEEE",
-    Firm == "CEEE-D - COMPANHIA ESTADUAL DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA - CEEE-D" ~ "CEEE-D",
-    Firm == "RGE SUL - RGE SUL DISTRIBUIDORA DE ENERGIA S.A." ~ "RGE SUL",
-    Firm == "ENEL CE - COMPANHIA ENERGETICA DO CEARA" ~ "ENEL CE",
-    Firm == "RGE - RIO GRANDE ENERGIA SA" ~ "RGE",
-    Firm == "EDP ES - EDP ESPÍRITO SANTO DISTRIBUIÇÃO DE ENERGIA S.A." ~ "EDP ES",
-    Firm == "EMT - ENERGISA MATO GROSSO - DISTRIBUIDORA DE ENERGIA S.A." ~ "EMT",
-    Firm == "EQUATORIAL PA - EQUATORIAL PARÁ DISTRIBUIDORA DE ENERGIA S.A." ~ "EQUATORIAL PA",
-    Firm == "CEBDIS - NEOENERGIA DISTRIBUIÇÃO BRASÍLIA S.A." ~ "CEBDIS",
-    Firm == "CEB - COMPANHIA ENERGÉTICA DE BRASÍLIA" ~ "CEB",
-    Firm == "EMS - ENERGISA MATO GROSSO DO SUL - DISTRIBUIDORA DE ENERGIA S.A." ~ "EMS",
-    Firm == "MANAUS ENERGIA - MANAUS ENERGIA S/A" ~ "MANAUS ENERGIA",
-    Firm == "EQUATORIAL MA - EQUATORIAL MARANHÃO DISTRIBUIDORA DE ENERGIA S.A" ~ "EQUATORIAL MA",
-    Firm == "COSERN - COMPANHIA ENERGÉTICA DO RIO GRANDE DO NORTE COSERN" ~ "COSERN",
-    Firm == "EQUATORIAL PI - EQUATORIAL PIAUÍ DISTRIBUIDORA DE ENERGIA S.A" ~ "EQUATORIAL PI",
-    Firm == "SAELPA - SAELPA S/A DE ELETRIFICAÇÃO DA PARAÍBA" ~ "SAELPA",
-    Firm == "EQUATORIAL AL - EQUATORIAL ALAGOAS DISTRIBUIDORA DE ENERGIA S.A." ~ "EQUATORIAL AL",
-    Firm == "ERO - ENERGISA RONDONIA - DISTRIBUIDORA DE ENERGIA S.A" ~ "ERO",
-    Firm == "ETO - ENERGISA TOCANTINS DISTRIBUIDORA DE ENERGIA S.A." ~ "ETO",
-    Firm == "ENERGIPE - EMPRESA ENERGÉTICA DE SERGIPE S/A." ~ "ENERGIPE",
-    Firm == "CFLCL - COMPANHIA FORÇA E LUZ CATAGUAZES-LEOPOLDINA" ~ "CFLCL",
-    Firm == "ESS - ENERGISA SUL-SUDESTE - DISTRIBUIDORA DE ENERGIA S.A." ~ "ESS",
-    Firm == "CAIUÁ - CAIUÁ SERVIÇOS DE ELETRICIDADE S/A." ~ "CAIUA",
-    Firm == "CPFL SANTA CRUZ - COMPANHIA LUZ E FORÇA SANTA CRUZ" ~ "CPFL SANTA CRUZ",
-    Firm == "EAC - ENERGISA ACRE - DISTRIBUIDORA DE ENERGIA S.A" ~ "EAC",
-    Firm == "EDEVP - EMPRESA DE DISTRIBUIÇÃO DE ENERGIA VALE PARANAPANEMA S.A." ~ "EDEVP",
-    Firm == "DMED - DME DISTRIBUIÇÃO S.A. - DMED" ~ "DMED",
-    Firm == "CEA - COMPANHIA DE ELETRICIDADE DO AMAPÁ" ~ "CEA",
-    Firm == "EEB - EMPRESA ELETRICA BRAGANTINA S A" ~ "EEB",
-    Firm == "EEVP - EMPRESA DE ELETRICIDADE VALE PARANAPANEMA S/A" ~ "EEVP",
-    Firm == "CEAM - COMPANHIA ENERGÉTICA DO AMAZONAS" ~ "CEAM",
-    Firm == "BOA VISTA - RORAIMA ENERGIA S.A." ~ "BOA VISTA",
-    Firm == "CNEE - COMPANHIA NACIONAL DE ENERGIA ELÉTRICA" ~ "CNEE",
-    Firm == "CENF - COMPANHIA DE ELETRICIDADE NOVA FRIBURGO" ~ "CENF",
-    Firm == "CPFL JAGUARI - COMPANHIA JAGUARI DE ENERGIA" ~ "CPFL JAGUARI",
-    Firm == "ELFSM - EMPRESA LUZ E FORÇA SANTA MARIA S/A" ~ "ELFSM",
-    Firm == "CELB - COMPANHIA ENERGÉTICA DA BORBOREMA" ~ "CELB",
-    Firm == "CPFL SUL PAULISTA - COMPANHIA SUL PAULISTA DE ENERGIA" ~ "CPFL SUL PAULISTA",
-    Firm == "CPFL LESTE PAULISTA - COMPANHIA LESTE PAULISTA DE ENERGIA" ~ "CPFL LESTE PAULISTA",
-    Firm == "COCEL - COMPANHIA CAMPOLARGUENSE DE ENERGIA COCEL" ~ "COCEL",
-    Firm == "CPFL MOCOCA - COMPANHIA LUZ E FORÇA DE MOCOCA" ~ "CPFL MOCOCA",
-    Firm == "CFLO - COMPANHIA FORÇA E LUZ DO OESTE" ~ "CFLO",
-    Firm == "DCELT - DCELT DISTRIBUIDORA CATARINENSE DE ENERGIA ELETRICA S/A" ~ "DCELT",
-    Firm == "DEMEI - DEPARTAMENTO MUNICIPAL DE ENERGIA DE IJUI" ~ "DEMEI",
-    Firm == "COOPERALIANÇA - COOPERATIVA ALIANCA" ~ "COOPERALIANÇA",
-    Firm == "SULGIPE - COMPANHIA SUL SERGIPANA DE ELETRICIDADE" ~ "SULGIPE",
-    Firm == "ELETROCAR - CENTRAIS ELÉTRICAS DE CARAZINHO SA" ~ "ELETROCAR",
-    Firm == "EFLUL - EMPRESA FORÇA E LUZ DE URUSSANGA LTDA" ~ "EFLUL",
-    Firm == "CHESP - COMPANHIA HIDROELÉTRICA SÃO PATRÍCIO - CHESP" ~ "CHESP",
-    Firm == "HIDROPAN - HIDROPAN DISTRIBUIÇÃO DE ENERGIA S.A." ~ "HIDROPAN",
-    Firm == "UHENPAL - NOVA PALMA ENERGIA LTDA" ~ "UHENPAL",
-    Firm == "MUXENERGIA - MUXFELDT MARIN E CIA LTDA" ~ "MUXENERGIA",
-    Firm == "CERR - COMPANHIA ENERGÉTICA DE RORAIMA" ~ "CERR",
-    Firm == "PACTO ENERGIA PR - FORCA E LUZ CORONEL VIVIDA LTDA" ~ "PACTO ENERGIA PR",
-    Firm == "JARI - JARI CELULOSE, PAPEL E EMBALAGENS S.A." ~ "JARI",
-    Firm == "EFLJC - EMPRESA FORÇA E LUZ JOÃO CESA LTDA" ~ "EFLJC",
-    Firm == "AME - AMAZONAS ENERGIA S.A." ~ "AME",
-    Firm == "EPB - ENERGISA PARAÍBA - DISTRIBUIDORA DE ENERGIA S.A" ~ "EPB",
-    Firm == "ESE - ENERGISA SERGIPE - DISTRIBUIDORA DE ENERGIA S.A" ~ "ESE",
-    Firm == "ENF - ENERGISA NOVA FRIBURGO - DISTRIBUIDORA DE ENERGIA S.A" ~ "ENF",
-    Firm == "EBO - ENERGISA BORBOREMA - DISTRIBUIDORA DE ENERGIA S.A" ~ "EBO",
-    Firm == "COPREL - COPREL COOPERATIVA DE ENERGIA" ~ "COPREL",
-    Firm == "COOPERA - COOPERATIVA PIONEIRA DE ELETRIFICAÇÃO - COOPERA" ~ "COOPERA",
-    Firm == "CERTEL ENERGIA - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA TEUTÔNIA" ~ "CERTEL ENERGIA",
-    Firm == "CETRIL - COOPERATIVA DE ELETRIFICACAO DE IBIUNA E REGIAO" ~ "CETRIL",
-    Firm == "CERSUL - CERSUL - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA" ~ "CERSUL",
-    Firm == "CERMOFUL - COOPERATIVA FUMACENSE DE ELETRICIDADE - CERMOFUL ENERGIA" ~ "CERMOFUL",
-    Firm == "CERMISSÕES - COOPERATIVA DE DISTRIBUIÇÃO E GERAÇÃO DE ENERGIA DAS MISSÕES - CERMISSÕES" ~ "CERMISSOES",
-    Firm == "COOPERLUZ - COOPERLUZ - COOPERATIVA DISTRIBUIDORA DE ENERGIA FRONTEIRA NOROESTE" ~ "COOPERLUZ",
-    Firm == "CRELUZ-D - CRELUZ - COOPERATIVA DE DISTRIBUICAO DE ENERGIA" ~ "CRELUZ-D",
-    Firm == "CERILUZ - COOPERATIVA REGIONAL DE ENERGIA E DESENVOLVIMENTO IJUÍ LTDA" ~ "CERILUZ",
-    Firm == "CERTAJA - COOPERATIVA REGIONAL DE ENERGIA TAQUARI JACUÍ" ~ "CERTAJA",
-    Firm == "CERIPA - COOPERATIVA DE ELETRIFICAÇÃO RURAL DE ITAÍ PARANAPANEMA AVARÉ LTDA" ~ "CERIPA",
-    Firm == "CERGAL - COOPERATIVA DE ELETRIFICAÇÃO ANITA GARIBALDI" ~ "CERGAL",
-    Firm == "CERBRANORTE - COOPERATIVA DE ELETRIFICAÇÃO DE BRAÇO DO NORTE" ~ "CERBRANORTE",
-    Firm == "CERIM - COOPERATIVA DE ELETRIFICAO E DESENVOLVIMENTO DA REGIAO DE ITU MAIRINQUE" ~ "CERIM",
-    Firm == "CERAÇÁ - CERACA - COOPERATIVA DISTRIBUIDORA DE ENERGIA VALE DO ARACA" ~ "CERACA",
-    Firm == "CERPALO - COOPERATIVA DE ELETRICIDADE DE PAULO LOPES" ~ "CERPALO",
-    Firm == "COOPERCOCAL - COOPERATIVA ENERGÉTICA COCAL" ~ "COOPERCOCAL",
-    Firm == "COORSEL - COOPERATIVA REGIONAL SUL DE ELETRIFICAÇÃO RURAL" ~ "COORSEL",
-    Firm == "CERGAPA - COOPERATIVA DE ELETRICIDADE GRÃO PARÁ" ~ "CERGAPA",
-    Firm == "CRERAL - CRERAL - COOPERATIVA REGIONAL DE ELETRIFICAÇÃO RURAL DO ALTO URUGUAI" ~ "CRERAL",
-    Firm == "CERTREL - COOPERATIVA DE ENERGIA TREVISO" ~ "CERTREL",
-    Firm == "CERPRO - COOPERATIVA DE ELETRIFICAÇÃO RURAL DA REGIÃO DE PROMISSÃO" ~ "CERPRO",
-    Firm == "CERIS - COOPERATIVA DE ELETRIFICAÇÃO DA REGIÃO DE ITAPECERICA DA SERRA" ~ "CERIS",
-    Firm == "CEJAMA - CEJAMA - COOPERATIVA DE ELETRICIDADE JACINTO MACHADO" ~ "CEJAMA",
-    Firm == "CEPRAG - COOPERATIVA DE ELETRICIDADE PRAIA GRANDE" ~ "CEPRAG",
-    Firm == "CEREJ - COOPERATIVA DE PRESTAÇÃO DE SERVIÇOS PÚBLICOS DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA SENADOR ESTEVES JÚNIOR - CEREJ" ~ "CEREJ",
-    Firm == "CERRP - COOPERATIVA DE ELETRIFICAÇÃO E DESENVOLVIMENTO DA REGIÃO DE SÃO JOSÉ DO RIO PRETO-CERRP" ~ "CERRP",
-    Firm == "CERES - COOPERATIVA DE ELETRIFICACAO RURAL DE RESENDE LTDA" ~ "CERES",
-    Firm == "CERAL-DIS - COOPERATIVA DE DISTRIBUICAO DE ENERGIA ELETRICA DE ARAPOTI" ~ "CERAL-DIS",
-    Firm == "CERGRAL - COOPERATIVA DE ELETRICIDADE DE GRAVATAL" ~ "CERGRAL",
-    Firm == "CEDRI - COOPERATIVA DE ELETRIFICAÇÃO E DISTRIBUIÇÃO DA REGIÃO DE ITARIRI" ~ "CEDRI",
-    Firm == "COOPERMILA - COOPERATIVA DE ELETRIFICAÇÃO LAURO MULLER" ~ "COOPERMILA",
-    Firm == "CERNHE - COOPERATIVA DE ELETRIFICAÇÃO E DESENVOLVIMENTO RURAL DA REGIÃO DE NOVO HORIZONTE" ~ "CERNHE",
-    Firm == "CERMC - COOPERATIVA DE ELETRIFICAÇÃO E DESENVOLVIMENTO DA REGIÃO DE MOGI DAS CRUZES" ~ "CERMC",
-    Firm == "CERAL ANITÁPOLIS - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA DE ANITÁPOLIS - CERAL" ~ "CERAL ANITÁPOLIS",
-    Firm == "CERCOS - COOPERATIVA DE ELETRIFICACAO E DESENVOLVIMENTO RURAL CENTRO SUL DE SERGIPE LTDA" ~ "CERCOS",
-    Firm == "CEGERO - COOPERATIVA DE ELETRICIDADE DE SÃO LUDGERO" ~ "CEGERO",
-    Firm == "CELETRO - COOPERATIVA DE ELETRIFICAÇÃO CENTRO JACUÍ LTDA" ~ "CELETRO",
-    Firm == "CERCI - COOPERATIVA DE ELETRIFICAÇÃO RURAL CACHOEIRAS ITABORAÍ LTDA" ~ "CERCI",
-    Firm == "CEMIRIM - COOPERATIVA DE ELETRIFICAÇÃO E DESENVOLVIMENTO DA REGIÃO DE MOGI MIRIM" ~ "CEMIRIM",
-    Firm == "CODESAM - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA SANTA MARIA" ~ "CODESAM",
-    Firm == "CERTHIL - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ENTRE RIOS LTDA" ~ "CERTHIL",
-    Firm == "CERFOX - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA FONTOURA XAVIER" ~ "CERFOX",
-    Firm == "CASTRO - DIS - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA DE CASTRO" ~ "CASTRO - DIS",
-    Firm == "COOPERNORTE - COOPERATIVA REGIONAL DE DISTRIBUIÇÃO DE ENERGIA DO LITORAL NORTE - COOPERNORTE" ~ "COOPERNORTE",
-    Firm == "CERAL ARARUAMA - COOPERATIVA DE ELETRIFICAÇÃO RURAL DE ARARUAMA LTDA" ~ "CERAL ARARUAMA",
-    Firm =="COOPERZEM - COOPERZEM COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA" ~  "COOPERZEM",
-    Firm =="CERVAM - COOPERATIVA DE ENERGIZAÇÃO E DE DESENVOLVIMENTO DO VALE DO MOGI" ~  "CERVAM",
-    Firm =="COOPERSUL - COOPERATIVA REGIONAL DE ELETRIFICAÇÃO RURAL FRONTEIRA SUL LTDA" ~  "COOPERSUL",
-    Firm =="CERSAD DISTRIBUIDORA - COOPERATIVA DE DISTRIBUIÇÃO DE ENERGIA ELÉTRICA SALTO DONNER" ~  "CERSAD DISTRIBUIDORA",
-    TRUE ~ Firm
-  )) 
+samp_1991_2023_names <- samp_1991_2023 %>%
+  left_join(df_names, by = c("Firm" = "Before_Privatization")) %>%
+  mutate(Firm_After = After_Privatization) %>%
+  select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
 
+```
+
+#Create a new variables "Tariff"
+```{r}
+
+#deflate Tariff with monthly IPCA
+#create monthly deflator
+ipca_monthly<-read_sql("SELECT ano, mes, indice, variacao_anual, variacao_doze_meses FROM basedosdados.br_ibge_ipca.mes_brasil")
+ipca_monthly<-ipca_monthly%>%arrange(ano,mes)
+ipca_monthly<-ipca_monthly%>%mutate(deflator93=indice/100)%>%
+  mutate(deflator122020=deflator93[ano==2023 & mes==12]/deflator93)
+ipca_monthly<-ipca_monthly%>%select(ano,mes,deflator122020)
+ipca_monthly <- type.convert(ipca_monthly, as.is = TRUE) 
+saveRDS(ipca_monthly, here("raw","ipca_deflator_monthly.RDS"))
+
+
+#Create variable Tariff
+df_1991_2023 <- samp_1991_2023_names %>%
+  mutate(Tariff = Revenue / ConsumptionEnergy)
+
+
+#Impute monthly values by taking the average consumption of that year
+# create annual data set
+df_annual <- df_1991_2023 %>%
+  group_by(Firm_After, Year, Class, Type, Privatization) %>%
+  summarize(
+    revenue = ifelse(all(is.na(Revenue)), NA_real_, sum(Revenue, na.rm = TRUE)),
+    revenue_tax = ifelse(all(is.na(RevenueTax)), NA_real_, sum(RevenueTax, na.rm = TRUE)),
+    consumption= ifelse(all(is.na(ConsumptionEnergy)), NA_real_, sum(ConsumptionEnergy, na.rm = TRUE)),
+    consumers = ifelse(all(is.na(Consumers)), NA_real_, sum(Consumers, na.rm = TRUE)),
+    tax = ifelse(all(is.na(Tax)), NA_real_, sum(Tax, na.rm = TRUE))
+  )
+
+#Create Tariff 
+df_annual <- df_annual %>%
+  mutate(Tariff = if_else(!is.na(consumption),revenue / consumption, NA))
+
+#Create relative time variable (t0= year of privatization)
+df_annual <- df_annual %>%
+  group_by(Firm_After) %>%
+  mutate(
+    t_privat = if_else(Privatization > 1, Year - Privatization, NA_real_))
+
+
+
+#Growth variable
+df_annual <- df_annual %>%
+  group_by(Firm_After, Class) %>%
+  mutate(
+    tariff_growth = if_else(
+      !is.na(t_privat) & any(t_privat == 0),  # Only calculate when t_privat is not NA and there's at least one t_privat == 0
+      (Tariff / Tariff[which(t_privat == 0)][1]) * 100,  # Use the first instance where t_privat == 0
+      NA_real_  # Otherwise, keep it as NA
+    )
+  ) %>%
+  ungroup()  # Ungroup after mutate
+
+
+#Create average growth rate, median, and 95th confidence interval of mean
+# Step 1: Calculate summary statistics by Class and t_privat
+df_summary <- df_annual %>%filter(Year>1993)%>%
+  group_by(Class, t_privat) %>%
+  summarize(
+    mean_tariff_growth = mean(tariff_growth, na.rm = TRUE),
+    median_tariff_growth = median(tariff_growth, na.rm = TRUE),
+    n = n(),
+    se = sd(tariff_growth, na.rm = TRUE) / sqrt(n),  # Standard error
+    ci_lower = mean_tariff_growth - qt(0.975, df = n - 1) * se,  # 95% confidence interval lower bound
+    ci_upper = mean_tariff_growth + qt(0.975, df = n - 1) * se   # 95% confidence interval upper bound
+  ) %>%
+  ungroup()
+
+# Step 2: Create the facet wrap graph
+# Step 2: Create the facet wrap graph with free y-scale, vertical line at t_privat = 0, and y-axis limits
+ggplot(df_summary, aes(x = t_privat, y = mean_tariff_growth)) +
+  geom_line(aes(group = Class), color = "blue") +  # Line for the mean
+  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = Class), alpha = 0.2) +  # Confidence interval
+  #geom_point(aes(x = t_privat, y = median_tariff_growth), color = "red", shape = 16) +  # Median points
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  # Vertical line at t_privat = 0
+  scale_x_continuous(limits = c(-10, 10)) +  # X-axis limits
+  scale_y_continuous(limits = c(0, 400)) +  # Y-axis limits
+  labs(
+    title = "Tariff Growth by Class and t_privat",
+    x = "t_privat",
+    y = "Tariff Growth (%)"
+  ) +
+  facet_wrap(~Class, scales = "free_y") +  # Free y-scales for each facet
+  theme_minimal()  # Clean theme
 
 
 ```
+
 
 
 ```{r}
@@ -473,8 +438,6 @@ samp_1991_2023 <- samp_1991_2023 %>%
 # samp_wide <- samp_selected %>%
 #   pivot_wider(names_from = Year_Month, values_from = Consumers)
 
-
-
 ```
 
 
@@ -482,7 +445,6 @@ samp_1991_2023 <- samp_1991_2023 %>%
 ```{r}
 
 write.csv(samp_1991_2023, "ANEEL_SAMP_1991-2023.csv", row.names = FALSE)
-
 
 
 print(unique(samp_1991_2023$Firm))
