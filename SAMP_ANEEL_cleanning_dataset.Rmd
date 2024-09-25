@@ -56,17 +56,12 @@ pacman::p_load(tidyverse, #packages for data science
                abind, # Combine Multidimensional Arrays
                readxl, #read xls files
                data.table, # Fast aggregation of large data
-               basedosdados) 
+               basedosdados,
+               bigQueryR,
+               googleAuthR) 
+
 
 ```
-
-## 1.3. set the google cloud console ID and project
-```{r}
-
-set_billing_id("inflation-IPCA")
-
-```
-
 
 # Load Files
 ```{r}
@@ -119,7 +114,6 @@ samp_1991_2002$MêsAno <- NULL
 ```{r}
 
 colnames(samp_1991_2002) <- c("Tension", "Firm", "Class", "Consumers", "ConsumptionEnergy", "Demand", "Revenue", "Tax", "Year", "Month")
-
 
 colnames(samp_2003_2023) <- c("Firm", "Year", "Month", "Tension", "Class", "ConsumptionEnergy", "Revenue", "RevenueTax", "Consumers")
 
@@ -294,7 +288,8 @@ samp_1991_2023 <- samp_1991_2023 %>%
   mutate(Class = case_when(
     Class == "Rural Aquicultor" ~ "Rural",
     Class == "Rural Irrigante" ~ "Rural",
-    Class == "Comercial, Serviços e Outras" ~ "Comercial",
+    Class == "Comercial" ~ "Commercial",
+    Class == "Comercial, Serviços e Outras" ~ "Commercial",
     Class == "Serviço Público (água, esgoto e saneamento)" ~ "Public Service",
     Class == "Serviço Público (tração elétrica)" ~ "Public Service",
     Class == "Consumo Próprio" ~ "Own Consumption",
@@ -330,68 +325,103 @@ samp_1991_2023_names <- samp_1991_2023 %>%
   mutate(Firm_After = After_Privatization) %>%
   select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
 
+
 ```
 
-#Create a new variables "Tariff"
+#Retrieve inflation data IPCA from Base dos dados: https://basedosdados.org/dataset/ea4d07ca-e779-4d77-bcfa-b0fd5ebea828?table=f1fd2eb7-467a-403b-8f1c-2de8eff354e6
 ```{r}
+## set the google cloud console ID and project
+basedosdados::set_billing_id("inflation-ipca")
 
 #deflate Tariff with monthly IPCA
 #create monthly deflator
-ipca_monthly<-read_sql("SELECT ano, mes, indice, variacao_anual, variacao_doze_meses FROM basedosdados.br_ibge_ipca.mes_brasil")
-ipca_monthly<-ipca_monthly%>%arrange(ano,mes)
-ipca_monthly<-ipca_monthly%>%mutate(deflator93=indice/100)%>%
-  mutate(deflator122020=deflator93[ano==2023 & mes==12]/deflator93)
-ipca_monthly<-ipca_monthly%>%select(ano,mes,deflator122020)
-ipca_monthly <- type.convert(ipca_monthly, as.is = TRUE) 
-saveRDS(ipca_monthly, here("raw","ipca_deflator_monthly.RDS"))
+#ipca_monthly <- basedosdados::read_sql(query = "SELECT ano, mes, indice, variacao_anual, variacao_doze_meses FROM basedosdados.br_ibge_ipca.mes_brasil")
+
+ipca_monthly_trans<-ipca_monthly%>%arrange(ano,mes)
+ipca_monthly_trans<-ipca_monthly_trans%>%mutate(deflator93=indice/100)%>%
+  mutate(deflator122023=deflator93[ano==2023 & mes==12]/deflator93)
+ipca_monthly_trans<-ipca_monthly_trans%>%select(ano,mes,deflator122023)
+ipca_monthly_trans <- type.convert(ipca_monthly_trans, as.is = TRUE) 
+
+colnames(ipca_monthly_trans) <- c("Year", "Month", "deflator122023")
+
+#write.csv(ipca_monthly_trans, "ipca_deflator_monthly.csv", row.names = FALSE)
 
 
+```
+
+
+#Create a new variables "Tariff"
+```{r}
 #Create variable Tariff
 df_1991_2023 <- samp_1991_2023_names %>%
-  mutate(Tariff = Revenue / ConsumptionEnergy)
+  mutate(Tariff = if_else(!is.na(ConsumptionEnergy) & ConsumptionEnergy>0 ,Revenue / ConsumptionEnergy, NA))
+
+# Left Join with inflation based on "Year" and "Month"
+df_joined <- left_join(df_1991_2023, ipca_monthly_trans, by = c("Year" = "Year", "Month" = "Month"))
 
 
 #Impute monthly values by taking the average consumption of that year
-# create annual data set
-df_annual <- df_1991_2023 %>%
-  group_by(Firm_After, Year, Class, Type, Privatization) %>%
-  summarize(
-    revenue = ifelse(all(is.na(Revenue)), NA_real_, sum(Revenue, na.rm = TRUE)),
-    revenue_tax = ifelse(all(is.na(RevenueTax)), NA_real_, sum(RevenueTax, na.rm = TRUE)),
-    consumption= ifelse(all(is.na(ConsumptionEnergy)), NA_real_, sum(ConsumptionEnergy, na.rm = TRUE)),
-    consumers = ifelse(all(is.na(Consumers)), NA_real_, sum(Consumers, na.rm = TRUE)),
-    tax = ifelse(all(is.na(Tax)), NA_real_, sum(Tax, na.rm = TRUE))
-  )
 
-#Create Tariff 
-df_annual <- df_annual %>%
-  mutate(Tariff = if_else(!is.na(consumption),revenue / consumption, NA))
+# #Create Tariff 
+# df_annual <- df_annual %>%
+#   mutate(Tariff = if_else(!is.na(consumption),revenue / consumption, NA))
+
+# Deflate the Tariff variable
+df_joined<-df_joined%>%mutate(Tariff_1223_BRL= Tariff*deflator122023,
+                              Revenue_1223_BRL=Revenue*deflator122023,
+                              revenue_tax_1223_BRL=RevenueTax*deflator122023,
+                              tax_1223_BRL=Tax*deflator122023)
+
+
+# create annual data set
+ df_annual <- df_joined %>%
+   group_by(Firm_After, Year, Class, Type, Privatization) %>%
+   summarize(
+     revenue = ifelse(all(is.na(Revenue_1223_BRL)), NA_real_, sum(Revenue_1223_BRL, na.rm = TRUE)),
+     revenue_tax = ifelse(all(is.na(revenue_tax_1223_BRL)), NA_real_, sum(revenue_tax_1223_BRL, na.rm = TRUE)),
+     consumption= ifelse(all(is.na(ConsumptionEnergy)), NA_real_, sum(ConsumptionEnergy, na.rm = TRUE)),
+     consumers = ifelse(all(is.na(Consumers)), NA_real_, sum(Consumers, na.rm = TRUE)),
+     tax = ifelse(all(is.na(tax_1223_BRL)), NA_real_, sum(tax_1223_BRL, na.rm = TRUE)))%>%
+   mutate(Tariff_1223_BRL=revenue/consumption)
+ 
 
 #Create relative time variable (t0= year of privatization)
 df_annual <- df_annual %>%
   group_by(Firm_After) %>%
   mutate(
-    t_privat = if_else(Privatization > 1, Year - Privatization, NA_real_))
-
+    t_privat = if_else(Privatization > 1, Year - Privatization, NA_real_),
+    owner_type =if_else(Privatization==0, "state-owned",if_else(Privatization==1, "always private", "privatized")))
 
 
 #Growth variable
-df_annual <- df_annual %>%
+df_annual <- df_annual %>% filter(Year > 1993) %>%
   group_by(Firm_After, Class) %>%
   mutate(
     tariff_growth = if_else(
       !is.na(t_privat) & any(t_privat == 0),  # Only calculate when t_privat is not NA and there's at least one t_privat == 0
-      (Tariff / Tariff[which(t_privat == 0)][1]) * 100,  # Use the first instance where t_privat == 0
+      (Tariff_1223_BRL / Tariff_1223_BRL[which(t_privat == 0)][1]) * 100,  # Use the first instance where t_privat == 0
       NA_real_  # Otherwise, keep it as NA
-    )
-  ) %>%
+    ),
+    tariff_growth_rel2015 = if_else(!is.na(Tariff_1223_BRL),
+      (Tariff_1223_BRL / Tariff_1223_BRL[which(Year == 2015)][1]) * 100,  # Use the first instance where t_privat == 0
+      NA_real_  # Otherwise, keep it as NA
+  )) %>%
   ungroup()  # Ungroup after mutate
 
 
+
+#filter out companies of type = permission
+
+df_annual<-df_annual%>%filter(Type!="Permission")
+
+```
+
+Growth Rate Analysis
+```{r}
 #Create average growth rate, median, and 95th confidence interval of mean
 # Step 1: Calculate summary statistics by Class and t_privat
-df_summary <- df_annual %>%filter(Year>1993)%>%
-  group_by(Class, t_privat) %>%
+df_summary <- df_annual %>%group_by(Class, t_privat) %>%
   summarize(
     mean_tariff_growth = mean(tariff_growth, na.rm = TRUE),
     median_tariff_growth = median(tariff_growth, na.rm = TRUE),
@@ -404,21 +434,101 @@ df_summary <- df_annual %>%filter(Year>1993)%>%
 
 # Step 2: Create the facet wrap graph
 # Step 2: Create the facet wrap graph with free y-scale, vertical line at t_privat = 0, and y-axis limits
-ggplot(df_summary, aes(x = t_privat, y = mean_tariff_growth)) +
+
+# Filter the data for the specified classes
+df_filtered <- df_summary %>%
+  filter(Class %in% c("Commercial", "Industrial", "Residential", "Rural"))
+
+# Create the plot with the filtered data and larger text sizes
+g_tariff <- ggplot(df_filtered, aes(x = t_privat, y = mean_tariff_growth)) +
   geom_line(aes(group = Class), color = "blue") +  # Line for the mean
   geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = Class), alpha = 0.2) +  # Confidence interval
-  #geom_point(aes(x = t_privat, y = median_tariff_growth), color = "red", shape = 16) +  # Median points
   geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  # Vertical line at t_privat = 0
-  scale_x_continuous(limits = c(-10, 10)) +  # X-axis limits
-  scale_y_continuous(limits = c(0, 400)) +  # Y-axis limits
+  scale_x_continuous(breaks = seq(-10,10,2), limits = c(-10, 10)) +  # X-axis limits
+  scale_y_continuous(breaks = seq(60,200,20), limits = c(60,200)) +  # Y-axis limits
   labs(
-    title = "Tariff Growth by Class and t_privat",
-    x = "t_privat",
-    y = "Tariff Growth (%)"
+    x = "Years before/after privatization",
+    y = "Revenue in constant 2023 BRL/MWh"
   ) +
-  facet_wrap(~Class, scales = "free_y") +  # Free y-scales for each facet
-  theme_minimal()  # Clean theme
+  facet_wrap(~Class, scales = "free_y", ncol = 2, nrow = 4) +  # Organize facets in 2 columns and 4 rows
+  theme_bw() +
+  theme(
+    legend.position = "none",   # Remove legend
+    text = element_text(size = 12),  # Set text size to 8pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
 
+print(g_tariff)
+
+# Save the plot as an image
+ggsave("tariff_growth_plot.png", plot = g_tariff, width = 10, height = 8, dpi = 300)
+
+
+
+```
+Absolute time graph
+```{r}
+df_summary_2015 <- df_annual %>%
+  group_by(Class, Year, owner_type) %>%
+  summarize(
+    mean_tariff_growth_rel2015 = mean(tariff_growth_rel2015, na.rm = TRUE),
+    mean_tariff_BRL23=mean(Tariff_1223_BRL,na.rm = TRUE),
+    median_tariff_growth_rel2015 = median(tariff_growth_rel2015, na.rm = TRUE),
+    n_rel2015 = n(),
+    se = sd(tariff_growth_rel2015, na.rm = TRUE) / sqrt(n_rel2015),  # Standard error
+    ci_lower_2015 = mean_tariff_growth_rel2015 - qt(0.975, df = n_rel2015 - 1) * se,  # 95% confidence interval lower bound
+    ci_upper_2015 = mean_tariff_growth_rel2015 + qt(0.975, df = n_rel2015 - 1) * se   # 95% confidence interval upper bound
+  )
+
+df_summary_2015 <- df_summary_2015 %>%
+  filter(Class %in% c("Commercial", "Industrial", "Residential", "Rural"))
+
+#absolute time graph
+g_tariff_growthrel2015 <- ggplot(df_summary_2015%>%filter(Year>1994), aes(x = Year, y = mean_tariff_growth_rel2015, color=owner_type)) +
+  geom_line() +  # Line for the mean
+  scale_x_continuous(breaks = seq(1995, 2023, 4)) +  # X-axis breaks only, without limits
+  labs(
+    x = "",
+    y = "Revenue growth in constant 2023 BRL/MWh (2015=100)"
+  ) +
+  facet_wrap(~Class, scales = "free_y", ncol = 2, nrow = 4) +  # Organize facets in 2 columns and 4 rows
+  theme_bw() +
+  theme(
+    legend.position = "bottom",   # Remove legend
+    text = element_text(size = 12),  # Set text size to 12pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
+
+print(g_tariff_rel2015)
+
+ggsave("tariff_growth_plot_ownertype.png", plot = g_tariff_growthrel2015, width = 10, height = 8, dpi = 300)
+
+g_tariff_rel2015 <- ggplot(df_summary_2015 %>% filter(Year > 1994), aes(x = Year, y = mean_tariff_BRL23, color = owner_type)) +
+  geom_line() +  # Line for the mean
+  scale_x_continuous(breaks = seq(1995, 2023, 4)) +  # X-axis breaks only, without limits
+  scale_y_continuous(breaks = seq(300,800,50), limits = c(300,800)) +  # Y-axis limits
+  labs(
+    x = "",
+    y = "Revenue in constant 2023 BRL/MWh",
+    color = "Ownership"  # Label for the legend
+  ) +
+  facet_wrap(~Class, scales = "free_y", ncol = 2, nrow = 4) +  # Organize facets in 2 columns and 4 rows
+  theme_bw() +
+  theme(
+    legend.position = "bottom",   # Set legend at the bottom
+    text = element_text(size = 12),  # Set text size to 12pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
+
+print(g_tariff_rel2015)
+
+ggsave("tariff_plot_ownertype.png", plot = g_tariff_rel2015, width = 10, height = 8, dpi = 300)
 
 ```
 
@@ -439,6 +549,9 @@ ggplot(df_summary, aes(x = t_privat, y = mean_tariff_growth)) +
 #   pivot_wider(names_from = Year_Month, values_from = Consumers)
 
 ```
+
+
+
 
 
 
