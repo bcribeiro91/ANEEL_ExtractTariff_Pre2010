@@ -7,18 +7,18 @@ editor_options:
   chunk_output_type: console
 ---
 
-
+# 1. Set Script 
 ## 1.1. Set Folder
 ```{r}
 
 getwd()
 
-setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/SAMP_ANEEL")
+setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/DATA_ANEEL")
 
 ```
 
 
-## 1.3. Install and load packages
+## 1.2. Install and load packages
 ```{r}
 
 if (!require("pacman")) install.packages("pacman") #pacman will not accept a character vector so the same packages are repeated
@@ -63,9 +63,10 @@ pacman::p_load(tidyverse, #packages for data science
 
 ```
 
-# Load Files
+# 2. Load Files
 ```{r}
 
+# SAMP ANEEL Files:
 samp_1991_2002 <- read_excel("samp_aneel_1991-2002.xlsx")
 
 samp_2003_2007 <- read_excel("samp_aneel_2003-2007.xlsx")
@@ -78,12 +79,68 @@ samp_2016_2020 <- read_excel("samp_aneel_2016-2020.xlsx")
 
 samp_2021_2023 <- read_excel("samp_aneel_2021-2023.xlsx")
 
-# Names before and after privatization
+# Names before and after privatization:
 df_names <- read.csv("names_before_after_privatization_BR.csv")
+
+# DEC & FEC ANEEL Files:
+dec_fec_2023 <- read_excel("DEC_FEC_Mensal_Distribuidora_2023.xlsx")
+
+dec_fec_2022 <- read_excel("DEC_FEC_Mensal_Distribuidora_2022.xlsx")
+
+dec_fec_2021 <- read_excel("DEC_FEC_Mensal_Distribuidora_2021.xlsx")
+
+dec_fec_2020 <- read_excel("DEC_FEC_Mensal_Distribuidora_2020.xlsx")
+
+dec_fec_2019 <- read_excel("DEC_FEC_Mensal_Distribuidora_2019.xlsx")
+
+dec_fec_2018 <- read_excel("DEC_FEC_Mensal_Distribuidora_2018.xlsx")
+
+dec_fec_2017 <- read_excel("DEC_FEC_Mensal_Distribuidora_2017.xlsx")
+
+dec_fec_2016 <- read_excel("DEC_FEC_Mensal_Distribuidora_2016.xlsx")
+
+dec_fec_2015 <- read_excel("DEC_FEC_Mensal_Distribuidora_2015.xlsx")
+
+dec_fec_2014 <- read_excel("DEC_FEC_Mensal_Distribuidora_2014.xlsx")
+
+dec_fec_2013 <- read_excel("DEC_FEC_Mensal_Distribuidora_2013.xlsx")
+
+dec_fec_2012 <- read_excel("DEC_FEC_Mensal_Distribuidora_2012.xlsx")
+
+dec_fec_2011 <- read_excel("DEC_FEC_Mensal_Distribuidora_2011.xlsx")
+
+dec_fec_2010 <- read_excel("DEC_FEC_Mensal_Distribuidora_2010.xlsx")
+
+dec_fec_2009 <- read_excel("DEC_FEC_Mensal_Distribuidora_2009.xlsx")
+
+dec_fec_2008 <- read_excel("DEC_FEC_Mensal_Distribuidora_2008.xlsx")
+
+dec_fec_2007 <- read_excel("DEC_FEC_Mensal_Distribuidora_2007.xlsx")
+
+dec_fec_2006 <- read_excel("DEC_FEC_Mensal_Distribuidora_2006.xlsx")
+
+dec_fec_2005 <- read_excel("DEC_FEC_Mensal_Distribuidora_2005.xlsx")
+
+dec_fec_2004 <- read_excel("DEC_FEC_Mensal_Distribuidora_2004.xlsx")
+
+dec_fec_2003 <- read_excel("DEC_FEC_Mensal_Distribuidora_2003.xlsx")
+
+dec_fec_2002 <- read_excel("DEC_FEC_Mensal_Distribuidora_2002.xlsx")
+
+dec_fec_2001 <- read_excel("DEC_FEC_Mensal_Distribuidora_2001.xlsx")
+
+dec_fec_2000 <- read_excel("DEC_FEC_Mensal_Distribuidora_2000.xlsx")
+
+dec_1993_2016 <- read_excel("data_DEC_1993-2016.xlsx")
+
+fec_1993_2016 <- read_excel("data_FEC_1993-2016.xlsx")
+
 
 ```
 
-# Full merge of 2003-2023 data
+# 3. Data Preparation
+# 3.1. SAMP - ANEEL
+# 3.1.1. SAMP - ANEEL: Full merge of 2003-2023 data
 ```{r}
 
 # Perform the rbind to merge the datasets
@@ -328,6 +385,127 @@ samp_1991_2023_names <- samp_1991_2023 %>%
 
 ```
 
+
+# 3.2.  FEC & DEC - ANEEL: Full merge of 2000-2023 data
+```{r}
+
+# Perform the rbind to merge the datasets
+dec_fec_2000_2023 <- rbind(dec_fec_2023, dec_fec_2022, dec_fec_2021, 
+                        dec_fec_2020, dec_fec_2019, dec_fec_2018,
+                        dec_fec_2017, dec_fec_2016, dec_fec_2015,
+                        dec_fec_2014, dec_fec_2013, dec_fec_2012,
+                        dec_fec_2011, dec_fec_2010, dec_fec_2009,
+                        dec_fec_2008, dec_fec_2007, dec_fec_2006,
+                        dec_fec_2005, dec_fec_2004, dec_fec_2003,
+                        dec_fec_2002, dec_fec_2001, dec_fec_2000)
+
+```
+
+
+# Eliminate lines that start with "Applied filters:" and "NA"
+```{r}
+
+dec_fec_2000_2023 <- dec_fec_2000_2023 %>%
+  filter(!grepl("^Applied filters:", Distribuidora))
+
+# Check for NA's
+dec_fec_2000_2023 <- dec_fec_2000_2023 %>%
+  filter(!is.na(Distribuidora))
+ 
+num_na_firm <- sum(is.na(dec_fec_2000_2023_clean$Distribuidora))
+
+print(num_na_firm)
+
+```
+
+# Change Column names, select only concessions and select only some variables
+```{r}
+
+# Rename column names
+colnames(dec_fec_2000_2023)
+
+colnames(dec_fec_2000_2023) <- c("Firm", "Type", "Year", "Month", "Consumers", "DEC", "FEC", "DECXP", "FECXP", "DECXN", "FECXN", "DECIP", "FECIP", "DECIND", "FECIND",    "DECINE", "FECINE", "DECINC", "FECINC", "DECINO", "FECINO", "DECIPC", "FECIPC", "DECXPC", "FECXPC", "DECXNC", "FECXNC")
+
+dec_fec_2000_2023 <- dec_fec_2000_2023 %>%
+  filter(Type!="Permissão")  # remove Permission type
+
+# Select only some columns from the dataset
+dec_fec_2000_2023_sel <- dec_fec_2000_2023 %>% select("Firm", "Year", "Month", "DEC", "FEC")
+
+
+```
+
+# Create a variable with the annual FEC and DEC
+```{r}
+
+annual_DEC_FEC <- dec_fec_2000_2023_sel %>%
+  group_by(Year, Firm) %>%
+  summarise(
+    DEC = sum(DEC, na.rm = TRUE),
+    FEC = sum(FEC, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+```
+
+# Prepare the DEC & FEC dataset from 1993-2016
+```{r}
+# Wide to long format
+dec_1993_2016_long <- melt(setDT(dec_1993_2016), id.vars = c("EMPRESA"), variable.name = "year")
+
+fec_1993_2016_long <- melt(setDT(fec_1993_2016), id.vars = c("EMPRESA"), variable.name = "year")
+
+# Change columns names
+colnames(dec_1993_2016_long) <- c("Firm", "Year", "DEC")
+
+colnames(fec_1993_2016_long) <- c("Firm", "Year", "FEC")
+
+# Left Join with inflation based on "Year" and "Month"
+dec_fec_1993_2016 <- left_join(fec_1993_2016_long, dec_1993_2016_long, by = c("Firm" = "Firm", "Year" = "Year"))
+
+# Convert 'Year' from factor to numeric
+dec_fec_1993_2016$Year <- as.numeric(as.character(dec_fec_1993_2016$Year))
+
+# Filter 1993-1999
+dec_fec_1993_1999 <- dec_fec_1993_2016 %>%
+  filter(Year < 2000)  # remove Permission type
+
+# Convert all names in the 'Firm' column to uppercase
+dec_fec_1993_1999$Firm <- toupper(dec_fec_1993_1999$Firm)
+
+# Save the dataset to harmonize the names
+write.csv(dec_fec_1993_1999, "dec_fec_1993_1999.csv", row.names = FALSE)
+
+
+```
+
+# Merge the dataset dec_fec_1993_1999 and annual_DEC_FEC 
+```{r}
+
+# Perform the rbind to merge the datasets
+fec_dec_1993_2023 <- rbind(dec_fec_1993_1999, annual_DEC_FEC)
+
+
+print(unique(dec_fec_1993_1999$Firm))
+
+
+
+
+```
+
+# Harmonize names and include the the Privatization data
+```{r}
+
+fec_dec_1993_2023_names <- fec_dec_1993_2023 %>%
+  left_join(df_names, by = c("Firm" = "Before_Privatization")) %>%
+  mutate(Firm_After = After_Privatization) %>%
+  select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
+
+```
+
+
+
+# 4. Analysis 
 #Retrieve inflation data IPCA from Base dos dados: https://basedosdados.org/dataset/ea4d07ca-e779-4d77-bcfa-b0fd5ebea828?table=f1fd2eb7-467a-403b-8f1c-2de8eff354e6
 ```{r}
 ## set the google cloud console ID and project
@@ -468,6 +646,7 @@ ggsave("tariff_growth_plot.png", plot = g_tariff, width = 10, height = 8, dpi = 
 
 
 ```
+
 Absolute time graph
 ```{r}
 df_summary_2015 <- df_annual %>%
