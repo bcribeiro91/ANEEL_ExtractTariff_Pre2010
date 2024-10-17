@@ -80,7 +80,7 @@ samp_2016_2020 <- read_excel("samp_aneel_2016-2020.xlsx")
 samp_2021_2023 <- read_excel("samp_aneel_2021-2023.xlsx")
 
 # Names before and after privatization:
-df_names <- read.csv("names_before_after_privatization_BR.csv")
+df_names <- read.csv("names_before_after_privatization_BR_updated.csv")
 
 # DEC & FEC ANEEL Files:
 dec_fec_2023 <- read_excel("DEC_FEC_Mensal_Distribuidora_2023.xlsx")
@@ -139,8 +139,8 @@ fec_1993_2016 <- read_excel("data_FEC_1993-2016.xlsx")
 ```
 
 # 3. Data Preparation
-# 3.1. SAMP - ANEEL
-# 3.1.1. SAMP - ANEEL: Full merge of 2003-2023 data
+## 3.1. SAMP - ANEEL
+### 3.1.1. SAMP - ANEEL: Full merge of 2003-2023 data
 ```{r}
 
 # Perform the rbind to merge the datasets
@@ -149,7 +149,7 @@ samp_2003_2023 <- rbind(samp_2003_2007, samp_2008_2011, samp_2012_2015,
 
 ```
 
-# format the database samp_1991_2002 to have a similar layout to samp_2003_2023
+### 3.1.2. SAMP - ANEEL: format the database samp_1991_2002 to have a similar layout to samp_2003_2023
 ```{r}
 
 #Convert the date column to Date type
@@ -167,7 +167,7 @@ samp_1991_2002$MêsAno <- NULL
 
 ```
 
-# Change Column Names of both datasets, and create a variable "Tax" in samp_2003_2023, and the "RevenueTax" in samp_1991_2002
+### 3.1.3. SAMP - ANEEL: Change Column Names of both datasets, and create a variable "Tax" in samp_2003_2023, and the "RevenueTax" in samp_1991_2002
 ```{r}
 
 colnames(samp_1991_2002) <- c("Tension", "Firm", "Class", "Consumers", "ConsumptionEnergy", "Demand", "Revenue", "Tax", "Year", "Month")
@@ -179,19 +179,14 @@ samp_2003_2023 <- samp_2003_2023 %>% mutate(Tax = RevenueTax - Revenue)
 
 samp_1991_2002 <- samp_1991_2002 %>% mutate(RevenueTax = Tax + Revenue)
 
-```
-
 
 # Temporarily removing the variable "Demand" from samp_1991_2002, because it is not clear what this number means
-```{r}
-
-# Remove the "Demand" column
 samp_1991_2002$Demand <- NULL
 
 ```
 
 
-# Merging both datasets: samp_2003_2023 and samp_1991_2002
+### 3.1.4. SAMP - ANEEL: Merging both datasets: samp_2003_2023 and samp_1991_2002
 ```{r}
 
 # Changing "Year" and "Month" variable to numeric, to enable merging 
@@ -204,11 +199,12 @@ samp_1991_2023 <- full_join(samp_2003_2023, samp_1991_2002, by = c("Firm", "Year
 
 ```
 
-# Rename Variable on Tension
+### 3.1.5. SAMP - ANEEL: Rename Variables
 ```{r}
 
 print(unique(samp_1991_2023$Tension))
 
+# Tension
 samp_1991_2023 <- samp_1991_2023 %>%
   mutate(Tension = case_when(
     Tension == "B1 - Residencial Baixa Renda(Consumo Mensal Superior ao Limite Regional de 200kWh)" ~ "B1 - Residencial Baixa Renda",
@@ -331,12 +327,8 @@ samp_1991_2023 <- samp_1991_2023 %>%
     Tension == "AS (Subterrâneo)" ~ "AS",
     TRUE ~ Tension
   )) 
-                      
 
-```
-
-# Rename Variable in Class
-```{r}
+# Class
 
 print(unique(samp_1991_2023$Class))
 
@@ -360,7 +352,7 @@ samp_1991_2023 <- samp_1991_2023 %>%
 
 ```
 
-# Eliminate lines that start with "Applied filters:" and "NA"
+### 3.1.6. SAMP - ANEEL: Eliminate lines that start with "Applied filters:" and "NA"
 ```{r}
 
 samp_1991_2023 <- samp_1991_2023 %>%
@@ -374,7 +366,7 @@ num_na_firm <- sum(is.na(samp_1991_2023$Firm))
 
 ```
 
-# Merge the datasets: "df_names" and "samp_1991_2023_names"
+### 3.1.7. SAMP - ANEEL: Merge the datasets: "df_names" and "samp_1991_2023_names", and save
 ```{r}
 
 samp_1991_2023_names <- samp_1991_2023 %>%
@@ -382,6 +374,8 @@ samp_1991_2023_names <- samp_1991_2023 %>%
   mutate(Firm_After = After_Privatization) %>%
   select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
 
+
+#write.csv(samp_1991_2023, "ANEEL_SAMP_1991-2023.csv", row.names = FALSE)
 
 ```
 
@@ -402,7 +396,7 @@ dec_fec_2000_2023 <- rbind(dec_fec_2023, dec_fec_2022, dec_fec_2021,
 ```
 
 
-# Eliminate lines that start with "Applied filters:" and "NA"
+### 3.2.1. FEC & DEC - ANEEL: Eliminate lines that start with "Applied filters:" and "NA"
 ```{r}
 
 dec_fec_2000_2023 <- dec_fec_2000_2023 %>%
@@ -418,7 +412,7 @@ print(num_na_firm)
 
 ```
 
-# Change Column names, select only concessions and select only some variables
+### 3.2.2. FEC & DEC - ANEEL: Change Column names, select only concessions and select only some variables
 ```{r}
 
 # Rename column names
@@ -435,7 +429,7 @@ dec_fec_2000_2023_sel <- dec_fec_2000_2023 %>% select("Firm", "Year", "Month", "
 
 ```
 
-# Create a variable with the annual FEC and DEC
+### 3.2.3. FEC & DEC - ANEEL: Create a variable with the annual FEC and DEC
 ```{r}
 
 annual_DEC_FEC <- dec_fec_2000_2023_sel %>%
@@ -446,9 +440,12 @@ annual_DEC_FEC <- dec_fec_2000_2023_sel %>%
   ) %>%
   ungroup()
 
+# Change columns names
+colnames(annual_DEC_FEC) <- c("Year", "Firm", "SAIDI", "SAIFI")
+
 ```
 
-# Prepare the DEC & FEC dataset from 1993-2016
+### 3.2.4. FEC & DEC - ANEEL: Prepare the DEC & FEC dataset from 1993-2016
 ```{r}
 # Wide to long format
 dec_1993_2016_long <- melt(setDT(dec_1993_2016), id.vars = c("EMPRESA"), variable.name = "year")
@@ -456,9 +453,9 @@ dec_1993_2016_long <- melt(setDT(dec_1993_2016), id.vars = c("EMPRESA"), variabl
 fec_1993_2016_long <- melt(setDT(fec_1993_2016), id.vars = c("EMPRESA"), variable.name = "year")
 
 # Change columns names
-colnames(dec_1993_2016_long) <- c("Firm", "Year", "DEC")
+colnames(dec_1993_2016_long) <- c("Firm", "Year", "SAIDI")
 
-colnames(fec_1993_2016_long) <- c("Firm", "Year", "FEC")
+colnames(fec_1993_2016_long) <- c("Firm", "Year", "SAIFI")
 
 # Left Join with inflation based on "Year" and "Month"
 dec_fec_1993_2016 <- left_join(fec_1993_2016_long, dec_1993_2016_long, by = c("Firm" = "Firm", "Year" = "Year"))
@@ -477,36 +474,76 @@ dec_fec_1993_1999$Firm <- toupper(dec_fec_1993_1999$Firm)
 write.csv(dec_fec_1993_1999, "dec_fec_1993_1999.csv", row.names = FALSE)
 
 
+
 ```
 
-# Merge the dataset dec_fec_1993_1999 and annual_DEC_FEC 
+### 3.2.5. FEC & DEC - ANEEL: Merge the dataset dec_fec_1993_1999 and annual_DEC_FEC 
 ```{r}
+
+# Convert all names in the 'Firm' column to uppercase
+annual_DEC_FEC$Firm <- toupper(annual_DEC_FEC$Firm)
 
 # Perform the rbind to merge the datasets
 fec_dec_1993_2023 <- rbind(dec_fec_1993_1999, annual_DEC_FEC)
 
 
-print(unique(dec_fec_1993_1999$Firm))
+```
 
 
+### 3.2.6. FEC & DEC - ANEEL: Select only Rede Group related distribution firms
+```{r}
+
+fec_dec_1993_2023_Rede <- fec_dec_1993_2023 %>%
+  mutate(Firm = case_when(
+    Firm == "EQUATORIAL PA" ~ "CELPA",
+    Firm == "ENERGISA ELO" ~ "CFLO",
+    Firm == "ENERGISA BR" ~ "EEB",
+    Firm == "ENERGISA CI" ~ "EnergisaSulSudeste",
+    Firm == "ENERGISA SUL-SUDESTE" ~ "EnergisaSulSudeste",
+    Firm == "ENERGISA VP" ~ "EDEVP",
+    Firm == "ENERGISA NA" ~ "CNEE",
+    Firm == "ENERGISA MS" ~ "ENERSUL",
+    Firm == "ENERGISA MT" ~ "CEMAT",
+    Firm == "ENERGISA TO" ~ "CELTINS",
+    TRUE ~ Firm
+  ))
 
 
 ```
 
+
 # Harmonize names and include the the Privatization data
 ```{r}
 
+# Convert all names in the 'Firm' column to uppercase
+df_names$Before_Privatization <- toupper(df_names$Before_Privatization)
+
+# Convert the 'Firm' column to UTF-8 encoding to handle any special characters
+df_names$After_Privatization <- iconv(df_names$After_Privatization, from = "latin1", to = "UTF-8")
+
+# Convert all names in the 'Firm' column to uppercase
+df_names$After_Privatization <- toupper(df_names$After_Privatization)
+
 fec_dec_1993_2023_names <- fec_dec_1993_2023 %>%
-  left_join(df_names, by = c("Firm" = "Before_Privatization")) %>%
+  left_join(df_names, by = c("Firm" = "Before_Privatization"), relationship = "many-to-many") %>%
   mutate(Firm_After = After_Privatization) %>%
   select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
+
+
+# Group by 'Year' and 'Firm_After' and sum the numeric columns, keeping NAs
+summed_data <- fec_dec_1993_2023_names %>%
+  group_by(Year, Firm_After) %>%
+  summarise(across(where(is.numeric), ~sum(.x))) %>%
+  ungroup()
+
 
 ```
 
 
 
 # 4. Analysis 
-#Retrieve inflation data IPCA from Base dos dados: https://basedosdados.org/dataset/ea4d07ca-e779-4d77-bcfa-b0fd5ebea828?table=f1fd2eb7-467a-403b-8f1c-2de8eff354e6
+## 4.1. SAMP - ANEEL
+### 4.1.1. SAMP - ANEEL: Retrieve inflation data IPCA from Base dos dados: https://basedosdados.org/dataset/ea4d07ca-e779-4d77-bcfa-b0fd5ebea828?table=f1fd2eb7-467a-403b-8f1c-2de8eff354e6
 ```{r}
 ## set the google cloud console ID and project
 basedosdados::set_billing_id("inflation-ipca")
@@ -529,7 +566,7 @@ colnames(ipca_monthly_trans) <- c("Year", "Month", "deflator122023")
 ```
 
 
-#Create a new variables "Tariff"
+### 4.1.2. SAMP - ANEEL:  Create a new variables "Tariff"
 ```{r}
 #Create variable Tariff
 df_1991_2023 <- samp_1991_2023_names %>%
@@ -595,7 +632,7 @@ df_annual<-df_annual%>%filter(Type!="Permission")
 
 ```
 
-Growth Rate Analysis
+### 4.1.3. SAMP - ANEEL: Growth Rate Analysis
 ```{r}
 #Create average growth rate, median, and 95th confidence interval of mean
 # Step 1: Calculate summary statistics by Class and t_privat
@@ -647,7 +684,7 @@ ggsave("tariff_growth_plot.png", plot = g_tariff, width = 10, height = 8, dpi = 
 
 ```
 
-Absolute time graph
+### 4.1.4. SAMP - ANEEL: Absolute time graph
 ```{r}
 df_summary_2015 <- df_annual %>%
   group_by(Class, Year, owner_type) %>%
@@ -712,7 +749,6 @@ ggsave("tariff_plot_ownertype.png", plot = g_tariff_rel2015, width = 10, height 
 ```
 
 
-
 ```{r}
 
 # # Selecionar as variáveis "Firm", "Year", "Month" e "Consumers"
@@ -730,16 +766,172 @@ ggsave("tariff_plot_ownertype.png", plot = g_tariff_rel2015, width = 10, height 
 ```
 
 
-
-
-
-
+## 4.2. FEC & DEC - ANEEL
+### 4.2.1. FEC & DEC - ANEEL Plots: CELPA
 ```{r}
+# Filter dataset for only CELPA
+fec_dec_1993_2023_Rede_celpa <- fec_dec_1993_2023_Rede %>%
+  filter(Firm == "CELPA")
 
-write.csv(samp_1991_2023, "ANEEL_SAMP_1991-2023.csv", row.names = FALSE)
+# Line plot for CELPA FEC
+celpa_fec <- ggplot(fec_dec_1993_2023_Rede_celpa, aes(x = Year, y = SAIFI)) +
+  geom_line(color = "blue", na.rm = TRUE) +  # Set a specific color for CELPA
+    geom_vline(xintercept = 2012, linetype = "dashed", color = "gray", size = 1) +  # Vertical line at 2012
+  labs(title = "SAIFI",
+       x = "Year", 
+       y = "DEC") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(0, 60, 10), limits = c(0, 60)) +  # Y-axis limits
+  theme(
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
 
+print(celpa_fec)
 
-print(unique(samp_1991_2023$Firm))
+# Save the plot as an image
+#ggsave("plot_onlyCelpa_netproft.png", plot = celpa_netproft, width = 10, height = 8, dpi = 300)
+
+# Line plot for CELPA DC
+celpa_dec <- ggplot(fec_dec_1993_2023_Rede_celpa, aes(x = Year, y = SAIDI)) +
+  geom_line(color = "blue", na.rm = TRUE) +  # Set a specific color for CELPA
+    geom_vline(xintercept = 2012, linetype = "dashed", color = "gray", size = 1) +  # Vertical line at 2012
+    labs(title = "SAIDI",
+       x = "Year", 
+       y = "DEC") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(0, 120, 10), limits = c(0, 120)) +  # Y-axis limits
+  theme(
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
+
+print(celpa_dec)
+
+# Save the plot as an image
+#ggsave("plot_onlyCelpa_debtEquity.png", plot = celpa_debtEquity, width = 10, height = 8, dpi = 300)
 
 ```
+
+### 4.2.2. FEC & DEC - ANEEL Plots: Merged firms under Energisa Sul-Sudeste
+```{r}
+# Filter dataset under Energisa Sul-Sudeste
+fec_dec_1993_2023_Rede_SulSudeste <- fec_dec_1993_2023_Rede %>%
+  filter(Firm %in% c("EEB", "CFLO", "CNEE", "EDEPV", "EnergisaSulSudeste"))
+
+# Line plot for CELPA netprofit_margin
+Rede_SulSudeste_fec <- ggplot(fec_dec_1993_2023_Rede_SulSudeste, aes(x = Year, y = SAIFI, color = Firm, color = Firm)) +
+  geom_line(na.rm = TRUE) +  # Set a specific color for CELPA
+  geom_vline(xintercept = 2012, linetype = "dashed", color = "lightgray", size = 1) +  # Vertical line at 2012
+  geom_vline(xintercept = 2016, linetype = "dashed", color = "darkgray", size = 1) +  # Vertical line at 2012
+  labs(title = "SAIFI for EEB, CFLO, CNEE, EDEPV, CAIUA, Energisa Sul-Sudeste",
+       x = "Year", 
+       y = "SAIFI") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +  # Y-axis limits
+  theme(
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
+
+print(Rede_SulSudeste_fec)
+
+# Save the plot as an image
+#ggsave("plot_onlyMerged_netproft.png", plot = merged_netproft, width = 10, height = 8, dpi = 300)
+
+# Line plot for debtequity_ratio for all firms except CELPA
+Rede_SulSudeste_dec <- ggplot(fec_dec_1993_2023_Rede_SulSudeste, aes(x = Year, y = SAIDI, color = Firm, group = Firm)) +
+  geom_line(na.rm = TRUE) +
+  geom_vline(xintercept = 2012, linetype = "dashed", color = "lightgray", size = 1) +  # Vertical line at 2012
+  geom_vline(xintercept = 2016, linetype = "dashed", color = "darkgray", size = 1) +  # Vertical line at 2012
+  labs(title = "SAIDI for EEB, CFLO, CNEE, EDEPV, CAIUA, Energisa Sul-Sudeste",
+       x = "Year", 
+       y = "SAIDI",
+       color = "Firm") +  # Label for the legend
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(0, 20, 5), limits = c(0, 20)) +  # Y-axis limits
+  theme(
+    legend.position = "right",  # Legend on the right
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
+
+print(Rede_SulSudeste_dec)
+
+# Save the plot as an image
+#ggsave("plot_onlyMerged_debtEquity.png", plot = merged_debtEquity, width = 10, height = 8, dpi = 300)
+
+```
+
+
+### 4.2.3. FEC & DEC - ANEEL Plots: All firms
+```{r}
+
+# Facet Wrap
+# Filter dataset for only CELPA
+fec_dec_1993_2023_Rede_sel <- fec_dec_1993_2023_Rede %>%
+  filter(Firm %in% c("CELTINS", "ENERSUL", "CEMAT"))
+
+# Line plot for netprofit_margin for each firm, ignoring NA values
+sel_fec <- ggplot(fec_dec_1993_2023_Rede_sel, aes(x = Year, y = SAIFI, color = Firm)) +
+  geom_line(na.rm = TRUE) +
+   geom_vline(xintercept = 2012, linetype = "dashed", color = "gray", size = 1) +  # Vertical line at 2012
+  labs(title = "SAIFI",
+       x = "Year", 
+       y = "SAIFI",
+    color = "Firm") + # Label for the legend
+  theme_bw()+  # Line for the mean
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis breaks only, without limits
+   scale_y_continuous(breaks = seq(0,60, 10), limits = c(0,60)) +  # Y-axis limits
+  facet_wrap(~ Firm, ncol = 3)+
+  theme(
+    legend.position = "none",   # Set legend at the bottom
+    text = element_text(size = 12),  # Set text size to 12pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
+
+print(sel_fec)
+
+# Save the plot as an image
+#ggsave("plot_onlyOthers_netproft.png", plot = others_netproft, width = 18, height = 8, dpi = 300)
+
+# Line plot for debtequity_ratio for each firm, ignoring NA values
+sel_dec <- ggplot(fec_dec_1993_2023_Rede_sel, aes(x = Year, y = SAIDI, color = Firm)) +
+  geom_line(na.rm = TRUE) +
+   geom_vline(xintercept = 2012, linetype = "dashed", color = "gray", size = 1) +  # Vertical line at 2012
+  labs(title = "SAIDI",
+       x = "Year", 
+       y = "SAIDI",
+    color = "Firm") + # Label for the legend
+  theme_bw()+
+    scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis breaks only, without limits
+  scale_y_continuous(breaks = seq(0, 90, 10), limits = c(0,90)) +  # Y-axis limits
+  facet_wrap(~ Firm, ncol = 3)+
+  theme(
+    legend.position = "none",   # Set legend at the bottom
+    text = element_text(size = 12),  # Set text size to 12pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
+
+print(sel_dec)
+
+# Save the plot as an image
+#ggsave("plot_onlyOthers_debtEquity.png", plot = others_debtEquity, width = 18, height = 8, dpi = 300)
+
+```
+
+
+
 
