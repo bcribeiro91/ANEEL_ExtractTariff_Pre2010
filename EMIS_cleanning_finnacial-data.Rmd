@@ -1,0 +1,413 @@
+---
+title: "EMIS_FinancialData_electricity_distribution_BR"
+author: "Beatriz Couto Ribeiro"
+date: "2024-10-11"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+# 1. Set Script 
+## 1.1. Set Folder
+```{r}
+
+getwd()
+
+setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/Financial_Data_RedeGroup_dollar")
+
+```
+
+
+## 1.2. Install and load packages
+```{r}
+
+if (!require("pacman")) install.packages("pacman") #pacman will not accept a character vector so the same packages are repeated
+
+pacman::p_load(tidyverse, #packages for data science
+               plm, #estimation of linear panel models
+               ggplot2,  #creating graphics
+               lmtest, #testing linear regression Models
+               tseries, #Augmented Dickey-Fuller Test
+               clubSandwich, #robustness checks
+               sandwich, #robustness checks
+               stargazer, #formatting tables for publications
+               devtools, #web developer tools 
+               rmarkdown, #reproducibility
+               tidyr,  #changing the shape and hierarchy of a data set
+               dplyr, #grammar of data manipulation
+               Synth, #importing and exporting
+               SCtools, #extensions for Synthetic Controls Analysis
+               MSCMT,  #Multivariate Synthetic Control Method
+               gsynth, #generalized Synthetic Control Method
+               panelView, #visualize data panels
+               httr, # call url
+               jsonlite, # use API
+               DataExplorer, # Automated Exploratory Data Analysis
+               kableExtra, #formatting tables
+               webshot, #enable table exportation with kableExtra
+               ggrepel, #labels with ggplot
+               ggthemes, #different graph themes for ggplot
+               ggpubr, #put figures together
+               car, # check multicollinearity
+               lmtest, # robust standard errors
+               #scpi, #  SCM with Multiple Treated Units and Staggered Adoption
+               synthdid, # Synthetic Difference in Differences Estimation
+               plm, # linear models for panel data
+               abind, # Combine Multidimensional Arrays
+               readxl, #read xls files
+               data.table, # Fast aggregation of large data
+               basedosdados,
+               bigQueryR,
+               openxlsx, #save documents excel format
+               googleAuthR) 
+
+
+```
+
+# 2. Load Files
+```{r}
+
+# Financial Files Files:
+ratios_celpa <- read_excel("Company_financials_ratios_CELPA_dollar.xlsx")
+
+
+```
+
+# 3. Data Preparation
+# 3.1. EMIS - Financial Data
+# 3.1.1. Extract Lines
+```{r}
+
+#Select rows: "Year", "Net Profit" and "Debt Equity Ration"
+ratios_celpa_selc <- ratios_celpa[c(8, 18, 55), ]
+
+#Transpose
+ratios_celpa_t <- t(ratios_celpa_selc)
+ratios_celpa_t <- as.data.frame(ratios_celpa_t)
+
+#Change columns names
+colnames(ratios_celpa_t) <- ratios_celpa_t[1,]
+ratios_celpa_t <- ratios_celpa_t[-1, ] 
+
+#Change columns names
+colnames(ratios_celpa_t) <- c("Year", "netprofit_margin", "debtequity_ratio")
+
+# Create a column with the company name
+ratios_celpa_t$firm <- "CELPA"
+
+#Convert the date column to Date type
+ratios_celpa_t$Year <- as.Date(ratios_celpa_t$Year)
+
+# Extract the year new columns
+ratios_celpa_t <- ratios_celpa_t %>%
+  mutate(year = year(Year))
+
+#Select desired columns
+ratios_celpa_t <- ratios_celpa_t [c(select = "year", "firm", "netprofit_margin", "debtequity_ratio")]
+
+
+```
+
+
+# Merge the datasets
+```{r}
+
+
+# Function to process each company's file
+process_ratios <- function(company_name) {
+  # Construct the filename based on the company name
+  file_name <- paste0("Company_financials_ratios_", company_name, "_dollar.xlsx")
+  
+  # Read the Excel file
+  ratios <- read_excel(file_name)
+  
+  # Select specific rows
+  ratios_selc <- ratios[c(8, 18, 55), ]
+  
+  # Transpose the dataset
+  ratios_t <- t(ratios_selc)
+  ratios_t <- as.data.frame(ratios_t)
+  
+  # Change column names
+  colnames(ratios_t) <- ratios_t[1, ]
+  ratios_t <- ratios_t[-1, ]
+  
+  # Set desired column names
+  colnames(ratios_t) <- c("Year", "netprofit_margin", "debtequity_ratio")
+  
+  # Add a column with the company name
+  ratios_t$firm <- company_name
+  
+  # Convert 'Year' column to Date type
+  ratios_t$Year <- as.Date(ratios_t$Year, format = "%Y")
+  
+  # Extract the year into a new column
+  ratios_t <- ratios_t %>%
+    mutate(year = year(Year))
+  
+  # Select the desired columns
+  ratios_t <- ratios_t %>%
+    select(year, firm, netprofit_margin, debtequity_ratio)
+  
+  return(ratios_t)
+}
+
+# List of company names
+companies <- c("CELPA", "CELTINS", "CEMAT", "ENERSUL", "CFLO", "CNEE", "EDEVP", "EEB", "EnergisaSulSudeste")  # Add more company names as needed
+
+# Loop through each company, process the file, and store in a list
+all_ratios <- lapply(companies, process_ratios)
+
+# Combine all the processed data into a single dataset
+final_dataset <- bind_rows(all_ratios)
+
+# Split EnergisaSulSudeste into CAIUA (before 2016) and EnergisaSulSudeste (2016 onwards)
+final_dataset <- final_dataset %>%
+  mutate(firm = if_else(firm == "EnergisaSulSudeste" & year < 2017, "CAIUA", firm))
+
+# Change the row names to sequential numbers
+row.names(final_dataset) <- seq_len(nrow(final_dataset))
+
+# Convert netprofit_margin and debtequity_ratio to numeric
+final_dataset <- final_dataset %>%
+  mutate(
+    netprofit_margin = as.numeric(gsub("%", "", netprofit_margin)),  # Convert to numeric
+    debtequity_ratio = as.numeric(gsub("%", "", debtequity_ratio))   # Convert to numeric
+  )
+
+# Transform the dataset from long to wide format and handle duplicates
+wide_dataset <- final_dataset %>%
+  pivot_wider(
+    names_from = firm,  # Use 'firm' to create new column names
+    values_from = c(netprofit_margin, debtequity_ratio),  # Spread these values
+    values_fill = NA,  # Ensure missing values are filled with NA
+    values_fn = list(netprofit_margin = ~ mean(.x, na.rm = TRUE),  # Handle duplicates by taking the mean
+                     debtequity_ratio = ~ mean(.x, na.rm = TRUE))  # Handle duplicates for debtequity_ratio
+  ) %>%
+  # Replace NaN values with NA in all columns
+  mutate(across(everything(), ~ replace(.x, is.nan(.x), NA)))
+
+# View the wide dataset
+print(wide_dataset)
+
+
+write.xlsx(final_dataset, "data_emis_financial_RedeGroup.xlsx", rowNames = FALSE)
+
+write.xlsx(wide_dataset, "data_emis_financial_RedeGroup_wide.xlsx", rowNames = FALSE)
+
+```
+
+
+#Plots: CELPA
+```{r}
+# Filter dataset for only CELPA
+celpa_dataset <- final_dataset %>%
+  filter(firm == "CELPA")
+
+# Line plot for CELPA netprofit_margin
+celpa_netproft <- ggplot(celpa_dataset, aes(x = year, y = netprofit_margin)) +
+  geom_line(color = "blue", na.rm = TRUE) +  # Set a specific color for CELPA
+    geom_vline(xintercept = 2012, linetype = "dashed", color = "gray", size = 1) +  # Vertical line at 2012
+  labs(title = "Net Profit Margin for CELPA",
+       x = "Year", 
+       y = "Net Profit Margin (%)") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(-50, 60, 10), limits = c(-50, 60)) +  # Y-axis limits
+  theme(
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
+
+print(celpa_netproft)
+
+# Save the plot as an image
+ggsave("plot_onlyCelpa_netproft.png", plot = celpa_netproft, width = 10, height = 8, dpi = 300)
+
+# Line plot for CELPA debtequity_ratio
+celpa_debtEquity <- ggplot(celpa_dataset, aes(x = year, y = debtequity_ratio)) +
+  geom_line(color = "blue", na.rm = TRUE) +  # Set a specific color for CELPA
+    geom_vline(xintercept = 2012, linetype = "dashed", color = "gray", size = 1) +  # Vertical line at 2012
+    labs(title = "Debt-Equity Ratio for CELPA",
+       x = "Year", 
+       y = "Debt-Equity Ratio (%)") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(-50, 1900, 100), limits = c(-50, 1900)) +  # Y-axis limits
+  theme(
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
+
+print(celpa_debtEquity)
+
+# Save the plot as an image
+ggsave("plot_onlyCelpa_debtEquity.png", plot = celpa_debtEquity, width = 10, height = 8, dpi = 300)
+
+```
+
+# Merged firms under Energisa Sul-Sudeste
+```{r}
+# Filter dataset for only CELPA
+merge_dataset <- final_dataset %>%
+  filter(firm %in% c("EEB", "CFLO", "CNEE", "EDEPV", "CAIUA", "EnergisaSulSudeste"))
+
+# Line plot for CELPA netprofit_margin
+merged_netproft <- ggplot(merge_dataset, aes(x = year, y = netprofit_margin, color = firm, color = firm)) +
+  geom_line(na.rm = TRUE) +  # Set a specific color for CELPA
+  geom_vline(xintercept = 2012, linetype = "dashed", color = "lightgray", size = 1) +  # Vertical line at 2012
+  geom_vline(xintercept = 2016, linetype = "dashed", color = "darkgray", size = 1) +  # Vertical line at 2012
+  labs(title = "Net Profit Margin for EEB, CFLO, CNEE, EDEPV, CAIUA, Energisa Sul-Sudeste",
+       x = "Year", 
+       y = "Net Profit Margin (%)") +
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(-50, 30, 10), limits = c(-50, 30)) +  # Y-axis limits
+  theme(
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
+
+print(merged_netproft)
+
+# Save the plot as an image
+ggsave("plot_onlyMerged_netproft.png", plot = merged_netproft, width = 10, height = 8, dpi = 300)
+
+# Line plot for debtequity_ratio for all firms except CELPA
+merged_debtEquity <- ggplot(merge_dataset, aes(x = year, y = debtequity_ratio, color = firm, group = firm)) +
+  geom_line(na.rm = TRUE) +
+  geom_vline(xintercept = 2012, linetype = "dashed", color = "lightgray", size = 1) +  # Vertical line at 2012
+  geom_vline(xintercept = 2016, linetype = "dashed", color = "darkgray", size = 1) +  # Vertical line at 2012
+  labs(title = "Debt-Equity Ratio Over Time for EEB, CFLO, CNEE, EDEPV, CAIUA, Energisa Sul-Sudeste",
+       x = "Year", 
+       y = "Debt-Equity Ratio (%)",
+       color = "Firm") +  # Label for the legend
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(0, 80, 10), limits = c(0, 80)) +  # Y-axis limits
+  theme(
+    legend.position = "right",  # Legend on the right
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
+
+print(merged_debtEquity)
+
+# Save the plot as an image
+ggsave("plot_onlyMerged_debtEquity.png", plot = merged_debtEquity, width = 10, height = 8, dpi = 300)
+
+```
+
+
+# Plots: All firms
+```{r}
+
+# Facet Wrap
+# Filter dataset for only CELPA
+select_dataset <- final_dataset %>%
+  filter(firm %in% c("CELTINS", "ENERSUL", "CEMAT"))
+
+# Line plot for netprofit_margin for each firm, ignoring NA values
+others_netproft <- ggplot(select_dataset, aes(x = year, y = netprofit_margin, color = firm)) +
+  geom_line(na.rm = TRUE) +
+   geom_vline(xintercept = 2012, linetype = "dashed", color = "gray", size = 1) +  # Vertical line at 2012
+  labs(title = "Net Profit Margin Over Time",
+       x = "Year", 
+       y = "Net Profit Margin (%)",
+    color = "Firm") + # Label for the legend
+  theme_bw()+  # Line for the mean
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis breaks only, without limits
+   scale_y_continuous(breaks = seq(-30,60, 10), limits = c(-30,60)) +  # Y-axis limits
+  facet_wrap(~ firm, ncol = 3)+
+  theme(
+    legend.position = "none",   # Set legend at the bottom
+    text = element_text(size = 12),  # Set text size to 12pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
+
+print(others_netproft)
+
+# Save the plot as an image
+ggsave("plot_onlyOthers_netproft.png", plot = others_netproft, width = 18, height = 8, dpi = 300)
+
+# Line plot for debtequity_ratio for each firm, ignoring NA values
+others_debtEquity <- ggplot(select_dataset, aes(x = year, y = debtequity_ratio, color = firm)) +
+  geom_line(na.rm = TRUE) +
+   geom_vline(xintercept = 2012, linetype = "dashed", color = "gray", size = 1) +  # Vertical line at 2012
+  labs(title = "Debt-Equity Ratio Over Time",
+       x = "Year", 
+       y = "Debt-Equity Ratio (%)",
+    color = "Firm") + # Label for the legend
+  theme_bw()+
+    scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis breaks only, without limits
+  facet_wrap(~ firm, ncol = 3)+
+  theme(
+    legend.position = "none",   # Set legend at the bottom
+    text = element_text(size = 12),  # Set text size to 12pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
+
+print(others_debtEquity)
+
+# Save the plot as an image
+ggsave("plot_onlyOthers_debtEquity.png", plot = others_debtEquity, width = 18, height = 8, dpi = 300)
+
+```
+
+
+#Plots: without CELPA
+```{r}
+# Filter out CELPA from the dataset for multi-firm plots
+non_celpa_dataset <- final_dataset %>%
+  filter(firm != "CELPA")
+
+# Line plot for netprofit_margin for all firms except CELPA
+ggplot(non_celpa_dataset, aes(x = year, y = netprofit_margin, color = firm, group = firm)) +
+  geom_line(na.rm = TRUE) +
+  labs(title = "Net Profit Margin Over Time (Excluding CELPA)",
+       x = "Year", 
+       y = "Net Profit Margin (%)",
+       color = "Firm") +  # Label for the legend
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(-50, 60, 10), limits = c(-50, 60)) +  # Y-axis limits
+  theme(
+    legend.position = "right",  # Legend on the right
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
+
+
+
+# Line plot for debtequity_ratio for all firms except CELPA
+ggplot(non_celpa_dataset, aes(x = year, y = debtequity_ratio, color = firm, group = firm)) +
+  geom_line(na.rm = TRUE) +
+  labs(title = "Debt-Equity Ratio Over Time (Excluding CELPA)",
+       x = "Year", 
+       y = "Debt-Equity Ratio (%)",
+       color = "Firm") +  # Label for the legend
+  theme_bw() +
+  scale_x_continuous(breaks = seq(1998, 2023, 2), limits = c(1998, 2023)) +  # X-axis limits and breaks
+  scale_y_continuous(breaks = seq(-10, 80, 10), limits = c(-10, 80)) +  # Y-axis limits
+  theme(
+    legend.position = "right",  # Legend on the right
+    text = element_text(size = 12),  # Text size
+    axis.text = element_text(size = 12),  # Axis text size
+    axis.title = element_text(size = 12)   # Axis titles size
+  )
+
+
+```
+
+
+

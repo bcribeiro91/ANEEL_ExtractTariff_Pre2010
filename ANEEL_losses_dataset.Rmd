@@ -1,0 +1,285 @@
+---
+title: "ANEEL_losses_dataset"
+author: "Beatriz Couto Ribeiro"
+date: "2024-10-08"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1. Set Script 
+## 1.1. Set Folder
+```{r}
+
+getwd()
+
+setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/DATA_ANEEL")
+
+```
+
+
+## 1.2. Install and load packages
+```{r}
+
+if (!require("pacman")) install.packages("pacman") #pacman will not accept a character vector so the same packages are repeated
+
+pacman::p_load(tidyverse, #packages for data science
+               plm, #estimation of linear panel models
+               ggplot2,  #creating graphics
+               lmtest, #testing linear regression Models
+               tseries, #Augmented Dickey-Fuller Test
+               clubSandwich, #robustness checks
+               sandwich, #robustness checks
+               stargazer, #formatting tables for publications
+               devtools, #web developer tools 
+               rmarkdown, #reproducibility
+               tidyr,  #changing the shape and hierarchy of a data set
+               dplyr, #grammar of data manipulation
+               Synth, #importing and exporting
+               SCtools, #extensions for Synthetic Controls Analysis
+               MSCMT,  #Multivariate Synthetic Control Method
+               gsynth, #generalized Synthetic Control Method
+               panelView, #visualize data panels
+               httr, # call url
+               jsonlite, # use API
+               DataExplorer, # Automated Exploratory Data Analysis
+               kableExtra, #formatting tables
+               webshot, #enable table exportation with kableExtra
+               ggrepel, #labels with ggplot
+               ggthemes, #different graph themes for ggplot
+               ggpubr, #put figures together
+               car, # check multicollinearity
+               lmtest, # robust standard errors
+               #scpi, #  SCM with Multiple Treated Units and Staggered Adoption
+               synthdid, # Synthetic Difference in Differences Estimation
+               plm, # linear models for panel data
+               abind, # Combine Multidimensional Arrays
+               readxl, #read xls files
+               data.table, # Fast aggregation of large data
+               basedosdados,
+               bigQueryR,
+               googleAuthR) 
+
+
+```
+
+# 2. Load Files
+```{r}
+
+# SAMP ANEEL Files:
+losses_2008_2022 <- read_excel("ANEEL_losses_2008-2023.xlsx")
+
+# Names before and after privatization:
+df_names <- read.csv("names_before_after_privatization_BR_updated.csv")
+
+```
+
+# 3. Data Preparation
+```{r}
+
+
+# Select only some columns from the dataset
+losses_2008_2022_sel <- losses_2008_2022 %>% select("Ano", "Perda Técnica", "Perda Não Técnica \"Real\"","'PwrBI - Excel'[Distribuidora]")
+
+#Change columns names
+colnames(losses_2008_2022_sel) <- c("Year", "technical_losses", "non_technical_losses","Firm")
+
+# Convert all names in the 'Firm' column to uppercase
+losses_2008_2022_sel$Firm <- toupper(losses_2008_2022_sel$Firm)
+
+# Multiply the values in the 'DEC' and 'FEC' columns by 100
+losses_2008_2022_sel$non_technical_losses <- losses_2008_2022_sel$non_technical_losses * 100
+losses_2008_2022_sel$technical_losses <- losses_2008_2022_sel$technical_losses * 100
+
+```
+
+
+# Names before and after privatization
+```{r}
+
+# Merge with names after privatization and year
+losses_2008_2022_sel_names <- losses_2008_2022_sel %>%
+  left_join(df_names, by = c("Firm" = "Before_Privatization")) %>%
+  mutate(Firm_After = After_Privatization) %>%
+  select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
+
+
+```
+
+
+# Classify the Companies as Privatized and non-privatized 
+```{r}
+# Create a new column 'owner_type' based on the 'Privatization' column and 'Firm' column
+losses_2008_2022_sel_names <- losses_2008_2022_sel_names %>%
+  mutate(owner_type = case_when(
+    Privatization >= 1 & Privatization <= 2009 ~ "Privatized",  # Privatized between 1 and 2009
+    Privatization == 0 ~ "State-owned",                         # Privatization is 0
+    TRUE ~ Firm                                                 # Otherwise, use the Firm name
+  ))
+
+# Update the 'owner_type' column for specific firms
+losses_2008_2022_sel_names <- losses_2008_2022_sel_names %>%
+  mutate(owner_type = case_when(
+    owner_type == "COPEL" ~ "State-owned",             # Set 'Copel' as 'state-owned'
+    owner_type == "RGE" ~ "Privatized",                # Set 'RGE' as 'privatized'
+    owner_type == "ENERGISA TO" ~ "Privatized",        # Set 'Energisa TO' as 'privatized'
+    TRUE ~ owner_type                            # Keep the existing values for other firms
+  ))
+
+```
+
+
+
+# Technical Losses
+```{r}
+# Summarize the data for 'privatized' and 'state-owned', and keep individual firm data for others
+losses_avg <- losses_2008_2022_sel_names %>%
+  group_by(Year, owner_type) %>%
+  summarise(avg_technical_losses = mean(technical_losses, na.rm = TRUE)) %>%
+  ungroup()
+
+
+# Reorder the 'owner_type' factor to place 'privatized' and 'state-owned' at the top
+losses_avg <- losses_avg %>%
+  mutate(owner_type = factor(owner_type, levels = c(
+    "Privatized", "State-owned", 
+    "AMAZONAS ENERGIA", "CEEE EQUATORIAL", "ENEL GO", 
+    "ENERGISA AC", "ENERGISA RO", "EQUATORIAL AL", 
+    "EQUATORIAL PI", "NEOENERGIA BR", 
+    "RORAIMA ENERGIA", "CEA EQUATORIAL"
+  )))
+
+
+# Create the line plot with all firms, privatized, and state-owned data
+g_technical_losses <-ggplot(losses_avg, aes(x = Year, y = avg_technical_losses, color = owner_type, group = owner_type)) +
+  geom_line(size = 1) +  # Line size
+  geom_point(size = 2) +  # Optional: Points on the line for each year
+  #geom_vline(xintercept = 2016, linetype = "dashed", color = "black", size = 1) +  # Vertical line at 2016
+  labs(
+    title = "Technical Losses by Ownership Type and Firms",
+    x = "Year",
+    y = "Average Technical Losses"
+  ) +
+  scale_x_continuous(breaks = seq(2008, 2022, 1)) +  # X-axis breaks only, without limits
+  scale_y_continuous(breaks = seq(0,15,3), limits = c(0,15)) +  # Y-axis limits
+  theme_bw() +  # Clean theme
+  scale_color_manual(
+    values = c(
+      "Privatized" = "darkred",  # Dark red for privatized
+      "State-owned" = "red",     # Red for state-owned
+      "AMAZONAS ENERGIA" = "lightblue", 
+      "CEEE EQUATORIAL" = "blue", 
+      "ENEL GO" = "darkblue",
+      "ENERGISA AC" = "#000066",
+      "ENERGISA RO" = "#6699ff",
+      "EQUATORIAL AL" = "#99ccff",
+      "EQUATORIAL PI" = "#666699",
+      "NEOENERGIA BR" = "#006699",
+      "RORAIMA ENERGIA" = "#0099cc",
+      "CEA EQUATORIAL" = "#336699"        
+    ),
+    name = "Ownership"  # Label for the legend
+  ) +
+  theme(
+    legend.position = "right",  # Position the legend on the right
+    text = element_text(size = 12)  # Set text size
+  )
+
+# Print the plot
+g_technical_losses
+
+ggsave("g_technical_losses.png", plot = g_technical_losses, width = 10, height = 8, dpi = 300)
+
+```
+
+
+# Non-Technical Losses
+```{r}
+# Summarize the data for 'privatized' and 'state-owned', and keep individual firm data for others
+non_losses_avg <- losses_2008_2022_sel_names %>%
+  group_by(Year, owner_type) %>%
+  summarise(avg_non_technical_losses = mean(non_technical_losses, na.rm = TRUE)) %>%
+  ungroup()
+
+# Reorder the 'owner_type' factor to place 'privatized' and 'state-owned' at the top
+non_losses_avg <- non_losses_avg %>%
+  mutate(owner_type = factor(owner_type, levels = c(
+    "Privatized", "State-owned", 
+    "AMAZONAS ENERGIA", "CEEE EQUATORIAL", "ENEL GO", 
+    "ENERGISA AC", "ENERGISA RO", "EQUATORIAL AL", 
+    "EQUATORIAL PI", "NEOENERGIA BR", 
+    "RORAIMA ENERGIA", "CEA EQUATORIAL"
+  )))
+
+
+
+# Create the line plot with all firms, privatized, and state-owned data
+g_non_technical_losses <-ggplot(non_losses_avg, aes(x = Year, y = avg_non_technical_losses, color = owner_type, group = owner_type)) +
+  geom_line(size = 1) +  # Line size
+  geom_point(size = 2) +  # Optional: Points on the line for each year
+  #geom_vline(xintercept = 2016, linetype = "dashed", color = "black", size = 1) +  # Vertical line at 2016
+  labs(
+    title = "Technical Losses by Ownership Type and Firms",
+    x = "Year",
+    y = "Average Technical Losses"
+  ) +
+  scale_x_continuous(breaks = seq(2008, 2022, 1)) +  # X-axis breaks only, without limits
+  scale_y_continuous(breaks = seq(0,55,5), limits = c(0,55)) +  # Y-axis limits
+  theme_bw() +  # Clean theme
+  scale_color_manual(
+    values = c(
+      "Privatized" = "darkred",  # Dark red for privatized
+      "State-owned" = "red",     # Red for state-owned
+      "AMAZONAS ENERGIA" = "lightblue", 
+      "CEEE EQUATORIAL" = "blue", 
+      "ENEL GO" = "darkblue",
+      "ENERGISA AC" = "#000066",
+      "ENERGISA RO" = "#6699ff",
+      "EQUATORIAL AL" = "#99ccff",
+      "EQUATORIAL PI" = "#666699",
+      "NEOENERGIA BR" = "#006699",
+      "RORAIMA ENERGIA" = "#0099cc",
+      "CEA EQUATORIAL" = "#336699"        
+    ),
+    name = "Ownership"  # Label for the legend
+  ) +
+  theme(
+    legend.position = "right",  # Position the legend on the right
+    text = element_text(size = 12)  # Set text size
+  )+
+  # Add annotations for privatization years
+  annotate("text", x = 2017.8, y = 35, label = "2018", color = "lightblue", hjust = 0) + #AMAZONAS ENERGIA 2018
+  annotate("text", x = 2020.8, y = 11, label = "2021", color = "blue", hjust = 0) + #CEEE EQUATORIAL 2021
+  annotate("text", x = 2015.8, y = 3, label = "2016", color = "darkblue", hjust = 0) + #ENEL GO 2016
+  annotate("text", x = 2017.8, y = 9, label = "2018", color = "#000066", hjust = 0) + #ENERGISA AC 2018
+  annotate("text", x = 2017.8, y = 18.7, label = "2018", color = "#6699ff", hjust = 0) + #ENERGISA RO 2018
+  annotate("text", x = 2017.8, y = 12.7, label = "2018", color = "#99ccff", hjust = 0) + #EQUATORIAL AL 2018
+  annotate("text", x = 2017.8, y = 17, label = "2018", color = "#666699", hjust = 0) + #EQUATORIAL PI 2018
+  annotate("text", x = 2019.8, y = 6, label = "2020", color = "#006699", hjust = 0) + #NEOENERGIA BR 2020
+  annotate("text", x = 2017.8, y = 15, label = "2018", color = "#0099cc", hjust = 0) + #RORAIMA ENERGIA 2018
+  annotate("text", x = 2020.8, y = 33.5, label = "2021", color = "#336699", hjust = 0) #CEA EQUATORIAL 2021
+
+
+# Print the plot
+g_non_technical_losses
+
+ggsave("g_non_technical_losses.png", plot = g_non_technical_losses, width = 10, height = 8, dpi = 300)
+
+```
+
+#Merge both datasets
+```{r}
+#Merge tables
+losses_2008_2022_sel_2 <- left_join(losses_avg, non_losses_avg, by = c("owner_type" = "owner_type", "Year" = "Year"))
+
+#Change columns names
+colnames(losses_2008_2022_sel_2) <- c("Year", "Firm", "technical_losses", "non_technical_losses")
+
+
+write.csv(losses_2008_2022_sel_2, "br_losses_2008-2022.csv", row.names = FALSE)
+
+
+
+```
+
+
