@@ -1,0 +1,314 @@
+---
+title: "02-create-plots"
+author: "Beatriz Couto Ribeiro"
+date: "2024-11-19"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1. Set Script 
+## 1.1. Set Folder
+```{r}
+
+getwd()
+
+setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data")
+
+```
+
+
+## 1.2. Install and load packages
+```{r}
+
+if (!require("pacman")) install.packages("pacman") #pacman will not accept a character vector so the same packages are repeated
+
+pacman::p_load(tidyverse, #packages for data science
+               plm, #estimation of linear panel models
+               ggplot2,  #creating graphics
+               lmtest, #testing linear regression Models
+               tseries, #Augmented Dickey-Fuller Test
+               clubSandwich, #robustness checks
+               sandwich, #robustness checks
+               stargazer, #formatting tables for publications
+               devtools, #web developer tools 
+               rmarkdown, #reproducibility
+               tidyr,  #changing the shape and hierarchy of a data set
+               dplyr, #grammar of data manipulation
+               Synth, #importing and exporting
+               SCtools, #extensions for Synthetic Controls Analysis
+               MSCMT,  #Multivariate Synthetic Control Method
+               gsynth, #generalized Synthetic Control Method
+               panelView, #visualize data panels
+               httr, # call url
+               jsonlite, # use API
+               DataExplorer, # Automated Exploratory Data Analysis
+               kableExtra, #formatting tables
+               webshot, #enable table exportation with kableExtra
+               ggrepel, #labels with ggplot
+               ggthemes, #different graph themes for ggplot
+               ggpubr, #put figures together
+               car, # check multicollinearity
+               lmtest, # robust standard errors
+               #scpi, #  SCM with Multiple Treated Units and Staggered Adoption
+               synthdid, # Synthetic Difference in Differences Estimation
+               plm, # linear models for panel data
+               abind, # Combine Multidimensional Arrays
+               readxl, #read xls files
+               data.table, # Fast aggregation of large data
+               basedosdados,
+               bigQueryR,
+               googleAuthR,
+               readxl, # read excel
+               openxlsx) # write xlsx file 
+
+
+```
+
+
+# 2. Load Files
+
+```{r}
+
+df_all <- read.csv("merged_dataset_distribution_1991-2023.csv")
+
+```
+
+# New variable (before and after privatization)
+```{r}
+
+#Create relative time variable (t0= year of privatization)
+df_all <- df_all %>%
+  group_by(Firm_After) %>%
+  mutate(
+    t_privat = if_else(Privatization > 1, Year - Privatization, NA_real_),
+    owner_type =if_else(Privatization==0, "state-owned",if_else(Privatization==1, "always private", "privatized")))
+
+```
+
+
+# firms in each ownership type
+```{r}
+
+# Create a bar plot to count the number of firms in each ownership type
+df_all %>%
+  # Group by owner_type and count the number of firms in each category
+  group_by(owner_type) %>%
+  summarise(count = n_distinct(Firm_After), .groups = "drop") %>%
+  # Plot the results using ggplot2
+  ggplot(aes(x = owner_type, y = count, fill = owner_type)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +  # Bar plot
+  labs(
+    title = "Count of Firms by Ownership Type",
+    x = "Ownership Type",
+    y = "Number of Firms"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+```
+
+# firms privatized by year
+```{r}
+# Assuming df_priv_count is already prepared
+df_priv_count <- df_all %>%
+  filter(Privatization > 1) %>%  # Exclude rows where Privatization is 0 or 1
+  group_by(Privatization) %>%    # Group by the Privatization year
+  summarise(count_firms = n_distinct(Firm_After), .groups = "drop")  # Count distinct firms privatized each year
+
+# Create the bar plot for privatization counts with customized x-axis breaks
+ggplot(df_priv_count, aes(x = Privatization, y = count_firms)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "blue") +  # Bar plot with custom colors
+  labs(
+    title = "Number of Firms Privatized by Year",
+    x = "Year of Privatization",
+    y = "Number of Firms Privatized"
+  ) +
+  scale_x_continuous(
+    breaks = seq(1994, 2023, by = 3),  # Set x-axis breaks from 1995 to 2023 with 3-year intervals
+    limits = c(1994, 2023)             # Ensure the axis spans from 1995 to 2023
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+```
+
+# boxplot of SAIDI by Year
+```{r}
+# Create a boxplot of SAIDI by Year
+ggplot(df_all, aes(x = factor(Year), y = SAIDI)) +
+  geom_boxplot(fill = "skyblue", color = "blue") +  # Boxplot with custom colors
+  labs(
+    title = "Annual Distribution of SAIDI",
+    x = "Year",
+    y = "SAIDI"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for readability
+    plot.title = element_text(hjust = 0.5)  # Center the plot title
+  )
+```
+
+
+# boxplot of SAIFI by Year
+```{r}
+# Create a boxplot of SAIDI by Year
+ggplot(df_all, aes(x = factor(Year), y = SAIFI)) +
+  geom_boxplot(fill = "skyblue", color = "blue") +  # Boxplot with custom colors
+  labs(
+    title = "Annual Distribution of SAIFI",
+    x = "Year",
+    y = "SAIDI"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for readability
+    plot.title = element_text(hjust = 0.5)  # Center the plot title
+  )
+```
+
+#Annual Average of Debit Equity Ratio
+```{r}
+# Calculate the annual average of netprofit_margin
+annual_avg_debtequity_ratio <- df_all %>%
+  group_by(Year) %>%
+  summarise(
+    avg_debtequity_margin = mean(debtequity_ratio, na.rm = TRUE),  # Calculate annual average
+    .groups = "drop"
+  )
+
+# Create the line graph
+ggplot(annual_avg_debtequity_ratio, aes(x = Year, y = avg_debtequity_margin)) +
+  geom_line(color = "blue", size = 1) +  # Line for annual average
+  geom_point(color = "red", size = 2) +  # Points for each year
+  labs(
+    title = "Annual Average of Debit Equity Ratio",
+    x = "Year",
+    y = "Average Debit Equity Ratio"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for better readability
+    plot.title = element_text(hjust = 0.5)  # Center the plot title
+  )
+```
+
+
+
+### Growth Rate Analysis
+```{r}
+#Create average growth rate, median, and 95th confidence interval of mean
+# Step 1: Calculate summary statistics by Class and t_privat
+df_summary <- df_annual %>%group_by(Class, t_privat) %>%
+  summarize(
+    mean_tariff_growth = mean(tariff_growth, na.rm = TRUE),
+    median_tariff_growth = median(tariff_growth, na.rm = TRUE),
+    n = n(),
+    se = sd(tariff_growth, na.rm = TRUE) / sqrt(n),  # Standard error
+    ci_lower = mean_tariff_growth - qt(0.975, df = n - 1) * se,  # 95% confidence interval lower bound
+    ci_upper = mean_tariff_growth + qt(0.975, df = n - 1) * se   # 95% confidence interval upper bound
+  ) %>%
+  ungroup()
+
+# Step 2: Create the facet wrap graph
+# Step 2: Create the facet wrap graph with free y-scale, vertical line at t_privat = 0, and y-axis limits
+
+# Filter the data for the specified classes
+df_filtered <- df_summary %>%
+  filter(Class %in% c("Commercial", "Industrial", "Residential", "Rural"))
+
+# Create the plot with the filtered data and larger text sizes
+g_tariff <- ggplot(df_filtered, aes(x = t_privat, y = mean_tariff_growth)) +
+  geom_line(aes(group = Class), color = "blue") +  # Line for the mean
+  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = Class), alpha = 0.2) +  # Confidence interval
+  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  # Vertical line at t_privat = 0
+  scale_x_continuous(breaks = seq(-10,10,2), limits = c(-10, 10)) +  # X-axis limits
+  scale_y_continuous(breaks = seq(60,200,20), limits = c(60,200)) +  # Y-axis limits
+  labs(
+    x = "Years before/after privatization",
+    y = "Revenue in constant 2023 BRL/MWh"
+  ) +
+  facet_wrap(~Class, scales = "free_y", ncol = 2, nrow = 4) +  # Organize facets in 2 columns and 4 rows
+  theme_bw() +
+  theme(
+    legend.position = "none",   # Remove legend
+    text = element_text(size = 12),  # Set text size to 8pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
+
+print(g_tariff)
+
+# Save the plot as an image
+ggsave("tariff_growth_plot.png", plot = g_tariff, width = 10, height = 8, dpi = 300)
+
+
+
+```
+
+### 4.1.4. Absolute time graph
+```{r}
+df_summary_2015 <- df_annual %>%
+  group_by(Class, Year, owner_type) %>%
+  summarize(
+    mean_tariff_growth_rel2015 = mean(tariff_growth_rel2015, na.rm = TRUE),
+    mean_tariff_BRL23=mean(Tariff_1223_BRL,na.rm = TRUE),
+    median_tariff_growth_rel2015 = median(tariff_growth_rel2015, na.rm = TRUE),
+    n_rel2015 = n(),
+    se = sd(tariff_growth_rel2015, na.rm = TRUE) / sqrt(n_rel2015),  # Standard error
+    ci_lower_2015 = mean_tariff_growth_rel2015 - qt(0.975, df = n_rel2015 - 1) * se,  # 95% confidence interval lower bound
+    ci_upper_2015 = mean_tariff_growth_rel2015 + qt(0.975, df = n_rel2015 - 1) * se   # 95% confidence interval upper bound
+  )
+
+df_summary_2015 <- df_summary_2015 %>%
+  filter(Class %in% c("Commercial", "Industrial", "Residential", "Rural"))
+
+#absolute time graph
+g_tariff_growthrel2015 <- ggplot(df_summary_2015%>%filter(Year>1994), aes(x = Year, y = mean_tariff_growth_rel2015, color=owner_type)) +
+  geom_line() +  # Line for the mean
+  scale_x_continuous(breaks = seq(1995, 2023, 4)) +  # X-axis breaks only, without limits
+  labs(
+    x = "",
+    y = "Revenue growth in constant 2023 BRL/MWh (2015=100)"
+  ) +
+  facet_wrap(~Class, scales = "free_y", ncol = 2, nrow = 4) +  # Organize facets in 2 columns and 4 rows
+  theme_bw() +
+  theme(
+    legend.position = "bottom",   # Remove legend
+    text = element_text(size = 12),  # Set text size to 12pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
+
+print(g_tariff_rel2015)
+
+ggsave("tariff_growth_plot_ownertype.png", plot = g_tariff_growthrel2015, width = 10, height = 8, dpi = 300)
+
+g_tariff_rel2015 <- ggplot(df_summary_2015 %>% filter(Year > 1994), aes(x = Year, y = mean_tariff_BRL23, color = owner_type)) +
+  geom_line() +  # Line for the mean
+  scale_x_continuous(breaks = seq(1995, 2023, 4)) +  # X-axis breaks only, without limits
+  scale_y_continuous(breaks = seq(300,800,50), limits = c(300,800)) +  # Y-axis limits
+  labs(
+    x = "",
+    y = "Revenue in constant 2023 BRL/MWh",
+    color = "Ownership"  # Label for the legend
+  ) +
+  facet_wrap(~Class, scales = "free_y", ncol = 2, nrow = 4) +  # Organize facets in 2 columns and 4 rows
+  theme_bw() +
+  theme(
+    legend.position = "bottom",   # Set legend at the bottom
+    text = element_text(size = 12),  # Set text size to 12pt for all text
+    axis.text = element_text(size = 12),  # Set axis text size
+    axis.title = element_text(size = 12),  # Set axis titles size
+    strip.text = element_text(size = 12)  # Set facet labels size
+  )
+
+print(g_tariff_rel2015)
+
+ggsave("tariff_plot_ownertype.png", plot = g_tariff_rel2015, width = 10, height = 8, dpi = 300)
+
+```
+
+
