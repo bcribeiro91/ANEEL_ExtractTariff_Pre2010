@@ -3,6 +3,8 @@ title: "01-clean-data"
 author: "Beatriz Couto Ribeiro"
 date: "2024-11-19"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 # 1. Set Script 
@@ -81,9 +83,6 @@ samp_2016_2020 <- read_excel("samp_aneel_2016-2020.xlsx")
 
 samp_2021_2023 <- read_excel("samp_aneel_2021-2023.xlsx")
 
-# Names before and after privatization:
-df_names <- read.csv("names_before_after_privatization_BR_updated.csv")
-
 
 ```
 
@@ -142,6 +141,36 @@ dec_fec_2000 <- read_excel("DEC_FEC_Mensal_Distribuidora_2000.xlsx")
 dec_1993_2016 <- read_excel("data_DEC_1993-2016.xlsx")
 
 fec_1993_2016 <- read_excel("data_FEC_1993-2016.xlsx")
+
+```
+
+# 2.3. Name harmonization before and after privatization file:
+```{r}
+
+df_names <- read.csv("names_before_after_privatization_BR_cnpj_concession_11-19-2024.csv")
+
+```
+
+# 2.4. Inflation data IPCA 
+Base dos dados: https://basedosdados.org/dataset/ea4d07ca-e779-4d77-bcfa-b0fd5ebea828?table=f1fd2eb7-467a-403b-8f1c-2de8eff354e6
+```{r}
+## set the google cloud console ID and project
+#basedosdados::set_billing_id("inflation-ipca")
+
+#deflate Tariff with monthly IPCA
+#create monthly deflator
+#ipca_monthly <- basedosdados::read_sql(query = "SELECT ano, mes, indice, variacao_anual, variacao_doze_meses FROM basedosdados.br_ibge_ipca.mes_brasil")
+
+ipca_monthly_trans<-ipca_monthly%>%arrange(ano,mes)
+ipca_monthly_trans<-ipca_monthly_trans%>%mutate(deflator93=indice/100)%>%
+  mutate(deflator122023=deflator93[ano==2023 & mes==12]/deflator93)
+ipca_monthly_trans<-ipca_monthly_trans%>%select(ano,mes,deflator122023)
+ipca_monthly_trans <- type.convert(ipca_monthly_trans, as.is = TRUE) 
+
+colnames(ipca_monthly_trans) <- c("Year", "Month", "deflator122023")
+
+#write.csv(ipca_monthly_trans, "ipca_deflator_monthly.csv", row.names = FALSE)
+
 
 ```
 
@@ -374,16 +403,61 @@ num_na_firm <- sum(is.na(samp_1991_2023$Firm))
 
 ```
 
-### 3.1.7. SAMP - ANEEL: Merge the datasets: "df_names" and "samp_1991_2023_names", and save
+
+### 3.1.7. SAMP - ANEEL: Consider inflation on the variables and create a annual database
 ```{r}
 
-samp_1991_2023_names <- samp_1991_2023 %>%
-  left_join(df_names, by = c("Firm" = "Before_Privatization")) %>%
-  mutate(Firm_After = After_Privatization) %>%
-  select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
+#Create variable Tariff
+df_1991_2023 <- samp_1991_2023 %>%
+  mutate(Tariff = if_else(!is.na(ConsumptionEnergy) & ConsumptionEnergy>0 ,Revenue / ConsumptionEnergy, NA))
 
+# Left Join with inflation based on "Year" and "Month"
+df_joined <- left_join(df_1991_2023, ipca_monthly_trans, by = c("Year" = "Year", "Month" = "Month"))
+
+
+#Impute monthly values by taking the average consumption of that year
+
+# #Create Tariff 
+# df_annual <- df_annual %>%
+#   mutate(Tariff = if_else(!is.na(consumption),revenue / consumption, NA))
+
+# Deflate the Tariff variable
+df_joined<-df_joined%>%mutate(Tariff_1223_BRL= Tariff*deflator122023,
+                              Revenue_1223_BRL=Revenue*deflator122023,
+                              revenue_tax_1223_BRL=RevenueTax*deflator122023,
+                              tax_1223_BRL=Tax*deflator122023)
+
+
+# create annual data set
+ df_annual <- df_joined %>%
+   group_by(Firm, Year, Tension, Class) %>%
+   summarize(
+     revenue = ifelse(all(is.na(Revenue_1223_BRL)), NA_real_, sum(Revenue_1223_BRL, na.rm = TRUE)),
+     revenue_tax = ifelse(all(is.na(revenue_tax_1223_BRL)), NA_real_, sum(revenue_tax_1223_BRL, na.rm = TRUE)),
+     consumption= ifelse(all(is.na(ConsumptionEnergy)), NA_real_, sum(ConsumptionEnergy, na.rm = TRUE)),
+     consumers = ifelse(all(is.na(Consumers)), NA_real_, sum(Consumers, na.rm = TRUE)),
+     tax = ifelse(all(is.na(tax_1223_BRL)), NA_real_, sum(tax_1223_BRL, na.rm = TRUE)))%>%
+   mutate(Tariff_1223_BRL=revenue/consumption)
+
+
+```
+
+### 3.1.8. SAMP - ANEEL: Merge the datasets: "df_names" and "samp_1991_2023_names", and save
+```{r}
+
+samp_1991_2023_names <- df_annual %>%
+   left_join(df_names, by = c("Firm" = "Before_Privatization"), relationship = "many-to-many") %>%
+   mutate(Firm_After = After_Privatization) %>%
+   select(-After_Privatization) %>%
+   filter(!is.na(Type))  # Exclude rows where Type is NA
+
+print(samp_1991_2023_names)
+
+# Select the desired columns
+samp_1991_2023_names <- samp_1991_2023_names[, 2:14]
 
 #write.csv(samp_1991_2023, "ANEEL_SAMP_1991-2023.csv", row.names = FALSE)
+
 
 ```
 
@@ -411,7 +485,7 @@ dec_fec_2000_2023 <- dec_fec_2000_2023 %>%
   filter(!grepl("^Applied filters:", Distribuidora))
 
 # Check for NA's
-dec_fec_2000_2023 <- dec_fec_2000_2023 %>%
+dec_fec_2000_2023_clean <- dec_fec_2000_2023 %>%
   filter(!is.na(Distribuidora))
  
 num_na_firm <- sum(is.na(dec_fec_2000_2023_clean$Distribuidora))
@@ -479,8 +553,7 @@ dec_fec_1993_1999 <- dec_fec_1993_2016 %>%
 dec_fec_1993_1999$Firm <- toupper(dec_fec_1993_1999$Firm)
 
 # Save the dataset to harmonize the names
-write.csv(dec_fec_1993_1999, "dec_fec_1993_1999.csv", row.names = FALSE)
-
+#write.csv(dec_fec_1993_1999, "dec_fec_1993_1999.csv", row.names = FALSE)
 
 
 ```
@@ -499,38 +572,7 @@ fec_dec_1993_2023 <- rbind(dec_fec_1993_1999, annual_DEC_FEC)
 ```
 
 
-### 3.2.6. FEC & DEC - ANEEL: Select only Rede Group related distribution firms
-```{r}
-
-fec_dec_1993_2023_Rede <- fec_dec_1993_2023 %>%
-  mutate(Firm = case_when(
-    Firm == "EQUATORIAL PA" ~ "CELPA",
-    Firm == "ENERGISA ELO" ~ "CFLO",
-    Firm == "ENERGISA BR" ~ "EEB",
-    Firm == "ENERGISA CI" ~ "EnergisaSulSudeste",
-    Firm == "ENERGISA SUL-SUDESTE" ~ "EnergisaSulSudeste",
-    Firm == "ENERGISA VP" ~ "EDEVP",
-    Firm == "ENERGISA NA" ~ "CNEE",
-    Firm == "ENERGISA MS" ~ "ENERSUL",
-    Firm == "ENERGISA MT" ~ "CEMAT",
-    Firm == "ENERGISA TO" ~ "CELTINS",
-    TRUE ~ Firm
-  ))
-
-
-fec_dec_1993_2023_Rede <- fec_dec_1993_2023_Rede %>% 
-                              filter(Firm %in% c("CELPA", "CFLO", "EEB", "EnergisaSulSudeste",
-                                               "EDEVP", "CNEE", "ENERSUL", "CEMAT", "CELTINS"))
-
-
-# Save the dataset to harmonize the names
-write.csv(fec_dec_1993_2023_Rede, "C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/extract_ANEEL_Tariff_pre2010/ANEEL_ExtractTariff_Pre2010/graph_RedeGroup_SaidiSaifi/fec_dec_1993_2023_RedeGroup.csv", row.names = FALSE)
-
-
-```
-
-
-# Harmonize names and include the the Privatization data
+### 3.2.6. FEC & DEC - ANEEL: Harmonize names and include the the Privatization data
 ```{r}
 
 # Convert all names in the 'Firm' column to uppercase
@@ -547,23 +589,40 @@ fec_dec_1993_2023_names <- fec_dec_1993_2023 %>%
   mutate(Firm_After = After_Privatization) %>%
   select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
 
+print(fec_dec_1993_2023_names)
 
-# Group by 'Year' and 'Firm_After' and sum the numeric columns, keeping NAs
-summed_data <- fec_dec_1993_2023_names %>%
-  group_by(Year, Firm_After) %>%
-  summarise(across(where(is.numeric), ~sum(.x))) %>%
-  ungroup()
+```
+
+
+### 3.2.7. FEC & DEC - ANEEL: Join datasets "samp_1991_2023_names" and "fec_dec_1993_2023_names"
+```{r}
+# Select only the required columns from fec_dec_1993_2023_names and handle duplicates
+fec_dec_selected <- fec_dec_1993_2023_names %>%
+  select(CNPJ, Year, SAIDI, SAIFI) %>%
+  group_by(CNPJ, Year) %>%
+  summarise(
+    SAIDI = mean(SAIDI, na.rm = TRUE),  # Calculate the average of SAIDI
+    SAIFI = mean(SAIFI, na.rm = TRUE),  # Calculate the average of SAIFI
+    .groups = "drop"  # Drop the grouping after summarising
+  )
+
+# Perform a left join based on CNPJ and Year
+merged_dataset <- samp_1991_2023_names %>%
+  left_join(fec_dec_selected, by = c("CNPJ", "Year"), relationship = "many-to-many")
 
 
 ```
 
 
-# 3.2.  Financial DATA -EMIS Next: Full merge of 1996-2023 data
+# 3.3.  Financial DATA - EMIS Next: Full merge of 1996-2023 data
+### 3.3.1. EMIS Next: Select the folder where the financial data of the companies are stored
 ```{r}
-
-
 setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/EMIS_financial_indicators_real")
 
+```
+
+### 3.3.2. EMIS Next: Select the main finacial variables 
+```{r}
 
 # Function to process each company's file
 process_ratios <- function(company_name) {
@@ -588,80 +647,131 @@ process_ratios <- function(company_name) {
   colnames(ratios_t) <- c("Year", "netprofit_margin", "debtequity_ratio")
   
   # Add a column with the company name
-  ratios_t$firm <- company_name
+  ratios_t$Firm <- company_name
   
   # Convert 'Year' column to Date type
   ratios_t$Year <- as.Date(ratios_t$Year, format = "%Y")
   
   # Extract the year into a new column
   ratios_t <- ratios_t %>%
-    mutate(year = year(Year))
+    mutate(Year = year(Year))
   
   # Select the desired columns
   ratios_t <- ratios_t %>%
-    select(year, firm, netprofit_margin, debtequity_ratio)
+    select(Year, Firm, netprofit_margin, debtequity_ratio)
   
   return(ratios_t)
 }
 
+```
 
-# # Specify the folder path
-# folder_path <- "C:\\Users\\wb618493\\OneDrive - WBG\\Documents\\ASA - Privitazation of Distribution\\Brazil\\Data\\EMIS_financial_indicators_real"
-# 
-# # Get the list of file names
-# file_names <- list.files(folder_path)
-# 
-# # Print the file names
-# print(file_names)
-
+### 3.3.3. EMIS Next: Provide the files names
+```{r}
 
 # List of company names
-companies <- c("Alianca", "AmazonasEnergia", "AMPLA", "Carazinho", "CEB", "Ceee", "Celesc", "CELPA", "CELTINS", "CEMAT", "CEMIG", "CERR", "CFLO", "CHESP", "CNEE", "Cocel", "Coelba", "Copel", "Cosern", "Dcelt", "DEMEI", "DMED", "EDEVP", "EDP_ES", "EDP_SP", "EEB", "EFLJC", "EFLUL", "Eletrobras", "Eletropaulo", "ELFSM", "EnelCE", "EnelSP", "EnergisaAC", "EnergisaBO", "EnergisaMinasRio", "EnergisaNF", "EnergisaPB", "EnergisaRO", "EnergisaSE", "EnergisaSulSudeste", "ENERSUL", "EquatorialAL", "EquatorialCEA", "EquatorialGO", "EquatorialMA", "EquatorialPI", "Forcel", "Hidropan", "Jaguari", "Jari", "LestePaulista", "Light", "Mococa", "Muxfeldt", "Neoenergia_PE", "NeoenergiaBR", "NovaPalma", "Pacto", "Paulista", "Piratininga", "RGE_Sul", "RoraimaEnergia", "SantaCruz", "SULGIPE", "SulPaulista")  # Add more company names as needed
+companies <- c("COOPERALIANCA", "AmazonasEnergia", "AMPLA", "ELETROCAR", "CEB", "Ceee", "Celesc", "CELPA", "CELTINS", "CEMAT", "CEMIG", "CERR", "CFLO", "CHESP", "CNEE", "Cocel", "Coelba", "Copel", "Cosern", "Dcelt", "DEMEI", "DMED", "EDEVP", "EDP_ES", "EDP_SP", "EEB", "EFLJC", "EFLUL", "Eletropaulo", "ELFSM", "EnelCE", "EnelSP", "EnergisaAC", "EnergisaBO", "EnergisaMinasRio", "EnergisaNF", "EnergisaPB", "EnergisaRO", "EnergisaSE", "EnergisaSulSudeste", "ENERSUL", "EquatorialAL", "EquatorialCEA", "EquatorialGO", "EquatorialMA", "EquatorialPI", "Forcel", "Hidropan", "Jaguari", "Jari", "LestePaulista", "Light", "Mococa", "Muxfeldt", "Neoenergia_PE", "NeoenergiaBR", "NovaPalma", "Pacto", "Paulista", "Piratininga", "RGE_Sul", "RoraimaEnergia", "SantaCruz", "SULGIPE", "SulPaulista")  # Add more company names as needed
 
 # Loop through each company, process the file, and store in a list
 all_ratios <- lapply(companies, process_ratios)
 
 # Combine all the processed data into a single dataset
-final_dataset <- bind_rows(all_ratios)
+df_financial_1996_2023 <- bind_rows(all_ratios)
 
 # Split EnergisaSulSudeste into CAIUA (before 2016) and EnergisaSulSudeste (2016 onwards)
-final_dataset <- final_dataset %>%
-  mutate(firm = if_else(firm == "EnergisaSulSudeste" & year < 2017, "CAIUA", firm))
+df_financial_1996_2023 <- df_financial_1996_2023 %>%
+  mutate(Firm = if_else(Firm == "EnergisaSulSudeste" & Year < 2017, "CAIUA", Firm))
 
 # Change the row names to sequential numbers
-row.names(final_dataset) <- seq_len(nrow(final_dataset))
+row.names(df_financial_1996_2023) <- seq_len(nrow(df_financial_1996_2023))
+
+# Convert all names in the 'Firm' column to uppercase
+df_financial_1996_2023$Firm <- toupper(df_financial_1996_2023$Firm)
 
 # Convert netprofit_margin and debtequity_ratio to numeric
-final_dataset <- final_dataset %>%
+df_financial_1996_2023 <- df_financial_1996_2023 %>%
   mutate(
     netprofit_margin = as.numeric(gsub("%", "", netprofit_margin)),  # Convert to numeric
     debtequity_ratio = as.numeric(gsub("%", "", debtequity_ratio))   # Convert to numeric
   )
 
-# Transform the dataset from long to wide format and handle duplicates
-wide_dataset <- final_dataset %>%
-  pivot_wider(
-    names_from = firm,  # Use 'firm' to create new column names
-    values_from = c(netprofit_margin, debtequity_ratio),  # Spread these values
-    values_fill = NA,  # Ensure missing values are filled with NA
-    values_fn = list(netprofit_margin = ~ mean(.x, na.rm = TRUE),  # Handle duplicates by taking the mean
-                     debtequity_ratio = ~ mean(.x, na.rm = TRUE))  # Handle duplicates for debtequity_ratio
-  ) %>%
-  # Replace NaN values with NA in all columns
-  mutate(across(everything(), ~ replace(.x, is.nan(.x), NA)))
-
-  # Arrange by 'year' in descending order
-  arrange(desc(year))
-
-# View the wide dataset
-print(wide_dataset)
+```
 
 
-write.xlsx(final_dataset, "data_emis_financial_all.xlsx", rowNames = FALSE)
+### 3.2.6. EMIS Next: Harmonize names and include the the Privatization data
+```{r}
 
-write.xlsx(wide_dataset, "data_emis_financial_all_wide.xlsx", rowNames = FALSE)
+# Convert all names in the 'Firm' column to uppercase
+df_names$Before_Privatization <- toupper(df_names$Before_Privatization)
+
+# Convert the 'Firm' column to UTF-8 encoding to handle any special characters
+df_names$After_Privatization <- iconv(df_names$After_Privatization, from = "latin1", to = "UTF-8")
+
+# Convert all names in the 'Firm' column to uppercase
+df_names$After_Privatization <- toupper(df_names$After_Privatization)
+
+df_financial_1996_2023_names <- df_financial_1996_2023 %>%
+  left_join(df_names, by = c("Firm" = "Before_Privatization"), relationship = "many-to-many") %>%
+  mutate(Firm_After = After_Privatization) %>%
+  select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
 
 
 ```
 
+### 3.2.7. EMIS Next: EMIS Next: Join datasets "merged_dataset" and "df_financial_1996_2023_names"
+```{r}
+# Select the required columns and handle duplicates by calculating the mean
+df_financial_1996_2023_selected <- df_financial_1996_2023_names %>%
+  select(CNPJ, Year, netprofit_margin, debtequity_ratio) %>%
+  group_by(CNPJ, Year) %>%
+  summarise(
+    netprofit_margin = mean(netprofit_margin, na.rm = TRUE),  # Calculate average of netprofit_margin
+    debtequity_ratio = mean(debtequity_ratio, na.rm = TRUE),  # Calculate average of debtequity_ratio
+    .groups = "drop"  # Drop the grouping after summarizing
+  )
+
+# Perform a left join based on CNPJ and Year
+merged_dataset_all <- merged_dataset %>%
+  left_join(df_financial_1996_2023_selected, by = c("CNPJ", "Year"), relationship = "many-to-many")
+
+write.csv(merged_dataset_all, "C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/merged_dataset_distribution_1991-2023.csv", row.names = FALSE)
+
+
+```
+
+
+# 4. Specific Cases
+## 4.1. Rede Group
+```{r}
+
+# fec_dec_1993_2023_Rede <- fec_dec_1993_2023 %>%
+#   mutate(Firm = case_when(
+#     Firm == "EQUATORIAL PA" ~ "CELPA",
+#     Firm == "ENERGISA ELO" ~ "CFLO",
+#     Firm == "ENERGISA BR" ~ "EEB",
+#     Firm == "ENERGISA CI" ~ "EnergisaSulSudeste",
+#     Firm == "ENERGISA SUL-SUDESTE" ~ "EnergisaSulSudeste",
+#     Firm == "ENERGISA VP" ~ "EDEVP",
+#     Firm == "ENERGISA NA" ~ "CNEE",
+#     Firm == "ENERGISA MS" ~ "ENERSUL",
+#     Firm == "ENERGISA MT" ~ "CEMAT",
+#     Firm == "ENERGISA TO" ~ "CELTINS",
+#     TRUE ~ Firm
+#   ))
+# 
+# 
+# fec_dec_1993_2023_Rede <- fec_dec_1993_2023_Rede %>% 
+#                               filter(Firm %in% c("CELPA", "CFLO", "EEB", "EnergisaSulSudeste",
+#                                                "EDEVP", "CNEE", "ENERSUL", "CEMAT", "CELTINS"))
+# 
+# 
+# # Save the dataset to harmonize the names
+# write.csv(fec_dec_1993_2023_Rede, "C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/extract_ANEEL_Tariff_pre2010/ANEEL_ExtractTariff_Pre2010/graph_RedeGroup_SaidiSaifi/fec_dec_1993_2023_RedeGroup.csv", row.names = FALSE)
+
+
+```
+
+
+
+
+```
 
