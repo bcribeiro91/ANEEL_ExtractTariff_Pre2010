@@ -8,6 +8,16 @@ editor_options:
 ---
 
 # 1. Set Script 
+
+# 0. Clean Environment
+```{r}
+rm(list = ls())
+
+
+```
+
+
+
 ## 1.1. Set Folder
 ```{r}
 
@@ -82,7 +92,6 @@ samp_2012_2015 <- read_excel("samp_aneel_2012-2015.xlsx")
 samp_2016_2020 <- read_excel("samp_aneel_2016-2020.xlsx")
 
 samp_2021_2023 <- read_excel("samp_aneel_2021-2023.xlsx")
-
 
 ```
 
@@ -161,16 +170,17 @@ Base dos dados: https://basedosdados.org/dataset/ea4d07ca-e779-4d77-bcfa-b0fd5eb
 #create monthly deflator
 #ipca_monthly <- basedosdados::read_sql(query = "SELECT ano, mes, indice, variacao_anual, variacao_doze_meses FROM basedosdados.br_ibge_ipca.mes_brasil")
 
-ipca_monthly_trans<-ipca_monthly%>%arrange(ano,mes)
-ipca_monthly_trans<-ipca_monthly_trans%>%mutate(deflator93=indice/100)%>%
-  mutate(deflator122023=deflator93[ano==2023 & mes==12]/deflator93)
-ipca_monthly_trans<-ipca_monthly_trans%>%select(ano,mes,deflator122023)
-ipca_monthly_trans <- type.convert(ipca_monthly_trans, as.is = TRUE) 
+# ipca_monthly_trans<-ipca_monthly%>%arrange(ano,mes)
+# ipca_monthly_trans<-ipca_monthly_trans%>%mutate(deflator93=indice/100)%>%
+#   mutate(deflator122023=deflator93[ano==2023 & mes==12]/deflator93)
+# ipca_monthly_trans<-ipca_monthly_trans%>%select(ano,mes,deflator122023)
+# ipca_monthly_trans <- type.convert(ipca_monthly_trans, as.is = TRUE) 
+# 
+# colnames(ipca_monthly_trans) <- c("Year", "Month", "deflator122023")
+# 
+# write.csv(ipca_monthly_trans, "ipca_deflator_monthly.csv", row.names = FALSE)
 
-colnames(ipca_monthly_trans) <- c("Year", "Month", "deflator122023")
-
-#write.csv(ipca_monthly_trans, "ipca_deflator_monthly.csv", row.names = FALSE)
-
+ipca_monthly_trans <- read.csv("ipca_deflator_monthly.csv")
 
 ```
 
@@ -231,8 +241,8 @@ samp_2003_2023$Year <- as.numeric(samp_2003_2023$Year)
 samp_2003_2023$Month <- as.numeric(samp_2003_2023$Month)
 
 
-# Perform the rbind to merge the datasets
-samp_1991_2023 <- full_join(samp_2003_2023, samp_1991_2002, by = c("Firm", "Year", "Month", "Tension", "Class", "ConsumptionEnergy", "Consumers", "Revenue", "RevenueTax", "Tax"))
+# Perform the rbind to append the datasets
+samp_1991_2023<-bind_rows(samp_2003_2023,samp_1991_2002)
 
 ```
 
@@ -442,6 +452,7 @@ df_joined<-df_joined%>%mutate(Tariff_1223_BRL= Tariff*deflator122023,
 
 ```
 
+
 ### 3.1.8. SAMP - ANEEL: Merge the datasets: "df_names" and "samp_1991_2023_names", and save
 ```{r}
 
@@ -451,13 +462,21 @@ samp_1991_2023_names <- df_annual %>%
    select(-After_Privatization) %>%
    filter(!is.na(Type))  # Exclude rows where Type is NA
 
-print(samp_1991_2023_names)
-
 # Select the desired columns
-samp_1991_2023_names <- samp_1991_2023_names[, 2:14]
+#samp_1991_2023_names <- samp_1991_2023_names[, 2:14]
+
+#Change name of the "Firm" column to "Firm_After"
+#samp_1991_2023_names <- samp_1991_2023_names %>% rename(Firm = Firm_After)
+
+# Convert all names in the 'Firm' column to uppercase, otherwise some variables will be lost
+#samp_1991_2023_names$Firm <- toupper(samp_1991_2023_names$Firm)
+
+# Convert all names in the 'Firm' column to uppercase, otherwise some variables will be lost
+##samp_1991_2023_names$Firm <- toupper(samp_1991_2023_names$Firm)
 
 #write.csv(samp_1991_2023, "ANEEL_SAMP_1991-2023.csv", row.names = FALSE)
 
+head(fec_dec_1993_2023)
 
 ```
 
@@ -525,6 +544,9 @@ annual_DEC_FEC <- dec_fec_2000_2023_sel %>%
 # Change columns names
 colnames(annual_DEC_FEC) <- c("Year", "Firm", "SAIDI", "SAIFI")
 
+# Convert all names in the 'Firm' column to uppercase
+annual_DEC_FEC$Firm <- toupper(annual_DEC_FEC$Firm)
+
 ```
 
 ### 3.2.4. FEC & DEC - ANEEL: Prepare the DEC & FEC dataset from 1993-2016
@@ -558,19 +580,6 @@ dec_fec_1993_1999$Firm <- toupper(dec_fec_1993_1999$Firm)
 
 ```
 
-### 3.2.5. FEC & DEC - ANEEL: Merge the dataset dec_fec_1993_1999 and annual_DEC_FEC 
-```{r}
-
-# Convert all names in the 'Firm' column to uppercase
-annual_DEC_FEC$Firm <- toupper(annual_DEC_FEC$Firm)
-
-# Perform the rbind to merge the datasets
-fec_dec_1993_2023 <- rbind(dec_fec_1993_1999, annual_DEC_FEC)
-
-
-
-```
-
 
 ### 3.2.6. FEC & DEC - ANEEL: Harmonize names and include the the Privatization data
 ```{r}
@@ -584,20 +593,41 @@ df_names$After_Privatization <- iconv(df_names$After_Privatization, from = "lati
 # Convert all names in the 'Firm' column to uppercase
 df_names$After_Privatization <- toupper(df_names$After_Privatization)
 
-fec_dec_1993_2023_names <- fec_dec_1993_2023 %>%
+dec_fec_1993_1999_names <- dec_fec_1993_1999 %>%
+  left_join(df_names, by = c("Firm" = "Before_Privatization"), relationship = "many-to-many") %>%
+  mutate(Firm_After = After_Privatization) %>%
+  select(-After_Privatization) # Optionally remove the After_Privatization column if not needed
+  #select(-Firm)
+
+
+annual_DEC_FEC_names <- annual_DEC_FEC %>%
   left_join(df_names, by = c("Firm" = "Before_Privatization"), relationship = "many-to-many") %>%
   mutate(Firm_After = After_Privatization) %>%
   select(-After_Privatization)  # Optionally remove the After_Privatization column if not needed
-
-print(fec_dec_1993_2023_names)
+  #select(-Firm)
 
 ```
 
 
-### 3.2.7. FEC & DEC - ANEEL: Join datasets "samp_1991_2023_names" and "fec_dec_1993_2023_names"
+### 3.2.5. FEC & DEC - ANEEL: Merge the dataset dec_fec_1993_1999 and annual_DEC_FEC 
 ```{r}
-# Select only the required columns from fec_dec_1993_2023_names and handle duplicates
-fec_dec_selected <- fec_dec_1993_2023_names %>%
+
+# Perform the rbind to merge the datasets
+fec_dec_1993_2023 <- rbind(dec_fec_1993_1999_names, annual_DEC_FEC_names)
+
+
+#Change name of the "Firm" column to "Firm_After"
+#fec_dec_1993_2023 <- fec_dec_1993_2023 %>% rename(Firm = Firm_After)
+
+```
+
+
+### 3.2.7. FEC & DEC - ANEEL: Join datasets "samp_1991_2023_names" and "fec_dec_1993_2023"
+```{r}
+
+
+# Select only the required columns from fec_dec_1993_2023 and handle duplicates
+fec_dec_selected <- fec_dec_1993_2023 %>%
   select(CNPJ, Year, SAIDI, SAIFI) %>%
   group_by(CNPJ, Year) %>%
   summarise(
@@ -610,6 +640,18 @@ fec_dec_selected <- fec_dec_1993_2023_names %>%
 merged_dataset <- samp_1991_2023_names %>%
   left_join(fec_dec_selected, by = c("CNPJ", "Year"), relationship = "many-to-many")
 
+
+```
+
+
+# Create a dataset to know the companies 
+```{r}
+
+df_collapsed_before <- merged_dataset %>%
+  ungroup() %>%                     # Remove existing grouping
+  select(Firm, Year, SAIDI) %>% # Select specific columns
+  distinct(Firm, Year) %>%          # Remove duplicates based on Firm and Year
+  count(Firm) 
 
 ```
 
@@ -694,6 +736,9 @@ df_financial_1996_2023 <- df_financial_1996_2023 %>%
     debtequity_ratio = as.numeric(gsub("%", "", debtequity_ratio))   # Convert to numeric
   )
 
+name_check<- merged_data%>%ungroup%>% distinct(Firm)
+writexl::write_xlsx(name_check, "test.xlsx")
+getwd()
 ```
 
 
@@ -719,15 +764,9 @@ df_financial_1996_2023_names <- df_financial_1996_2023 %>%
 
 ### 3.2.7. EMIS Next: EMIS Next: Join datasets "merged_dataset" and "df_financial_1996_2023_names"
 ```{r}
-# Select the required columns and handle duplicates by calculating the mean
+# Select only the required columns from df_financial_1996_2023_names
 df_financial_1996_2023_selected <- df_financial_1996_2023_names %>%
-  select(CNPJ, Year, netprofit_margin, debtequity_ratio) %>%
-  group_by(CNPJ, Year) %>%
-  summarise(
-    netprofit_margin = mean(netprofit_margin, na.rm = TRUE),  # Calculate average of netprofit_margin
-    debtequity_ratio = mean(debtequity_ratio, na.rm = TRUE),  # Calculate average of debtequity_ratio
-    .groups = "drop"  # Drop the grouping after summarizing
-  )
+  select(CNPJ, Year, netprofit_margin, debtequity_ratio)
 
 # Perform a left join based on CNPJ and Year
 merged_dataset_all <- merged_dataset %>%
@@ -737,6 +776,47 @@ write.csv(merged_dataset_all, "C:/Users/wb618493/OneDrive - WBG/Documents/ASA - 
 
 
 ```
+
+
+```{r}
+
+# Step 1: Select relevant columns from each dataset
+fec_dec_selected <- fec_dec_1993_2023 %>%
+  select(Year, Firm_After, SAIDI, SAIFI)
+
+df_financial_selected <- df_financial_1996_2023_names %>%
+  select(Year, Firm_After, netprofit_margin, debtequity_ratio)
+
+# Step 2: Merge datasets
+merged_data <- samp_1991_2023_names %>%
+  left_join(fec_dec_selected, by = c("Year", "Firm_After")) %>%
+  left_join(df_financial_selected, by = c("Year", "Firm_After"))
+
+# Step 3: Summarize in case of duplicates
+final_data <- merged_data %>%
+  group_by(Year, Firm_After, Tension, Class) %>%
+  summarize(
+   # Weighted average for SAIDI and SAIFI
+    SAIDI = weighted.mean(SAIDI, w = consumers, na.rm = TRUE),
+    SAIFI = weighted.mean(SAIFI, w = consumers, na.rm = TRUE),
+    # Sum variables
+    revenue = sum(revenue, na.rm = TRUE),
+    revenue_tax = sum(revenue_tax, na.rm = TRUE),
+    consumption = sum(consumption, na.rm = TRUE),
+    consumers = sum(consumers, na.rm = TRUE),
+    tax = sum(tax, na.rm = TRUE),
+    # Average financial metrics
+    netprofit_margin = mean(netprofit_margin, na.rm = TRUE),
+    debtequity_ratio = mean(debtequity_ratio, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# View the final dataset
+head(final_data)
+
+
+```
+
 
 
 # 4. Specific Cases
