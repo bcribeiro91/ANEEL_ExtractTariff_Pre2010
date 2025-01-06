@@ -54,7 +54,7 @@ pacman::p_load(tidyverse, #packages for data science
 
 ```
 
-#Data
+# Data
 ```{r}
 
 getwd()
@@ -121,7 +121,7 @@ for (i in 1:nrow(data)) {
 
 ```
 
-# Retrieve ALL INFORMATION (residential, rural....) the role table from PDF
+## Retrieve ALL INFORMATION (residential, rural....) the role table from PDF
 ```{r}
 
 
@@ -189,8 +189,8 @@ for (pdf_file in pdf_files) {
 
 ```
 
-
-# Retrieve only the variable "B1 - Residencial" - Final
+# 1. RESIDENTIAL
+## 1.1. Retrieve only the variable "B1 - Residencial" - Final
 ```{r}
 
 input_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_documents"
@@ -297,7 +297,7 @@ for (pdf_file in pdf_files) {
 ```
 
 
-#Integrate the results
+## 1.2. Integrate the results: B1-RESIDENTIAL
 ```{r}
 
 # Set the input folder containing the CSV files
@@ -354,157 +354,343 @@ wide_df <- pivot_wider(combined_data, names_from = year, values_from = B1_RESIDE
 ```
 
 
-# Try to improve the analysis from PDF files with OCR - NOT WORK
+# 2. RURAL
+## Retrieve only the variable "B2 - Rural" - Final
 ```{r}
 
-# Download Portuguese language data if not already available
-tesseract_download("por")
+input_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_documents"
+output_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_rural_csv"
 
-# Set the TESSDATA_PREFIX environment variable to point to the correct directory
-Sys.setenv(TESSDATA_PREFIX = "C:/Users/Ribeiro/AppData/Local/tesseract5/tesseract5/tessdata")  # Adjust this path as necessary
+# Ensure output folder exists
+if (!dir.exists(output_folder)) {
+  dir.create(output_folder, recursive = TRUE)
+}
 
-# Set the directory path
-pdf_dir <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_documents"
+# List all PDF files in the input folder
+pdf_files <- list.files(input_folder, pattern = "\\.pdf$", full.names = TRUE)
 
-# List all PDF files in the directory
-pdf_files <- list.files(pdf_dir, pattern = "\\.pdf$", full.names = TRUE)
-
-# Filter the files that end with 1997, 1998, or 1999
-selected_pdfs <- pdf_files[grepl("1997\\.pdf$|1998\\.pdf$|1999\\.pdf$", pdf_files)]
-
-# Initialize tesseract for OCR (Portuguese language)
-tesseract_engine <- tesseract("por")
-
-# Function to process PDFs, apply OCR if necessary, and extract "B1-RESIDENCIAL" values
-convert_pdf_to_readable <- function(pdf_path) {
-  message("Processing file: ", pdf_path)
+# Function to extract the row with "B1-RESIDENCIAL" (allowing up to 1 character difference)
+# and retrieve the full number after it from all tables in the PDF
+extract_first_valid_row_and_save <- function(pdf_file, output_folder) {
+  # Extract the filename without extension
+  file_name <- tools::file_path_sans_ext(basename(pdf_file))
   
-  # Read PDF using pdftools
-  pdf_text_raw <- pdf_text(pdf_path)
+  # Split the file name into ID and year
+  file_parts <- unlist(strsplit(file_name, "_"))
+  ID <- file_parts[1]
+  year <- file_parts[2]
   
-  # Check if pdf_text_raw extracted any text
-  if (length(pdf_text_raw) == 0 || all(nchar(pdf_text_raw) == 0)) {
-    # If no text extracted, fallback to OCR
-    message("Using OCR on: ", pdf_path)
-    pdf_text_raw <- pdf_ocr_text(pdf_path, engine = tesseract_engine)
-  }
+  # Extract all tables from the PDF
+  tables <- extract_tables(pdf_file, guess = TRUE)
   
-  # Loop over pages of the document
-  for (i in seq_along(pdf_text_raw)) {
-    text_page <- pdf_text_raw[i]
+  # Define the standard column names for the output
+  standard_columns <- c("ID", "year", "B2_RURAL", "role_number", "table_index")
+  
+  # Loop over all extracted tables
+  for (table_index in seq_along(tables)) {
+    table <- tables[[table_index]]
     
-    # Print the text of the current page for troubleshooting
-    message("Text of page ", i, ":\n", substr(text_page, 1, 500), "\n")
+    # Convert the table to a data frame
+    df <- as.data.frame(table, stringsAsFactors = FALSE)
     
-    # Use regular expression to find "B1-RESIDENCIAL" followed by the number
-    b1_residencial_value <- str_extract_all(text_page, "B1-RESIDENCIAL\\s*[0-9,.]+")
+    # Fuzzy match for "B1-RESIDENCIAL" (allowing up to 1 character difference)
+    target_row_index <- which(stringdist::stringdist(df[, 1], "B2-RURAL", method = "lv") <= 1)
     
-    # Check if we found any matches and print them
-    if (length(b1_residencial_value[[1]]) > 0) {
-      for (value in b1_residencial_value[[1]]) {
-        message("Extracted value from page ", i, ": ", value)
+    # Check if there is a match
+    if (length(target_row_index) > 0) {
+      # Extract the matching row
+      selected_row <- df[target_row_index, ]
+      
+      # Retrieve the full number(s) in the row after "B1-RESIDENCIAL"
+      row_values <- unlist(regmatches(selected_row[1, ], gregexpr("\\d+(\\.\\d+)?", selected_row[1, ])))
+      
+      # Remove any erroneous "1" values that might be captured
+      row_values <- row_values[row_values != "2"]
+      
+      # Limit the extracted numbers to the first 2
+      row_values <- head(row_values, 2)
+      
+      # Check if we successfully retrieved any valid numbers
+      if (length(row_values) > 0) {
+        # Store the results in a temporary data frame
+        temp_df <- data.frame(
+          ID = ID,
+          year = year,
+          B2_RURAL = selected_row[1],  # The text in the row
+          role_number = paste(row_values, collapse = ", "),  # Join all numbers in the row
+          table_index = table_index,  # Record which table the data came from
+          stringsAsFactors = FALSE
+        )
+        
+        # Ensure temp_df has the standard column names
+        missing_cols <- setdiff(standard_columns, names(temp_df))
+        for (col in missing_cols) {
+          temp_df[[col]] <- NA  # Add missing columns as NA
+        }
+        
+        # Reorder the columns to match the standard structure
+        temp_df <- temp_df[standard_columns]
+        
+        # Create an output file name
+        output_file <- paste0(output_folder, "/", file_name, "_rural.csv")
+        
+        # Save the data to a CSV file with UTF-8 encoding for Portuguese
+        write.csv(temp_df, output_file, row.names = FALSE, fileEncoding = "UTF-8")
+        cat("Saved extracted data to:", output_file, "\n")
+        
+        # Since we found the first valid row, stop processing further tables and exit the loop
+        break
+      } else {
+        cat("No valid number found in the 'B2-RURAL' row of table", table_index, "in", pdf_file, "\n")
       }
     } else {
-      message("No 'B1-RESIDENCIAL' found on page ", i)
+      cat("No fuzzy match for 'B2-RURAL' found in table", table_index, "in", pdf_file, "\n")
     }
   }
 }
 
-# Loop through the selected PDFs and apply the extraction process
-lapply(selected_pdfs, convert_pdf_to_readable)
+# Loop over all PDF files and apply the extraction function
+for (pdf_file in pdf_files) {
+  tryCatch({
+    extract_first_valid_row_and_save(pdf_file, output_folder)
+  }, error = function(e) {
+    message("Error processing file ", pdf_file, ": ", e$message)
+  })
+}
+
 
 ```
 
 
-# ???
+
+# 3. DEMAIS CLASSES
+## Retrieve only the variable "B3 - DEMAIS CLASSES" - Final
 ```{r}
 
+input_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_documents"
+output_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_demais_csv"
 
-# Define the PDF directory
-pdf_dir <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_documents"
+# Ensure output folder exists
+if (!dir.exists(output_folder)) {
+  dir.create(output_folder, recursive = TRUE)
+}
 
-# List all PDF files in the directory
-pdf_files <- list.files(pdf_dir, pattern = "\\.pdf$", full.names = TRUE)
+# List all PDF files in the input folder
+pdf_files <- list.files(input_folder, pattern = "\\.pdf$", full.names = TRUE)
 
-# Filter the files that end with 1997, 1998, or 1999
-selected_pdfs <- pdf_files[grepl("1997\\.pdf$|1998\\.pdf$|1999\\.pdf$", pdf_files)]
-
-# Initialize tesseract for OCR in Portuguese
-tesseract_engine <- tesseract("por")
-
-# Function to process PDFs, convert pages to images, apply OCR, and extract relevant data
-extract_b1_residencial_from_image <- function(pdf_path) {
-  message("Processing file: ", pdf_path)
+# Function to extract the row with "B1-RESIDENCIAL" (allowing up to 1 character difference)
+# and retrieve the full number after it from all tables in the PDF
+extract_first_valid_row_and_save <- function(pdf_file, output_folder) {
+  # Extract the filename without extension
+  file_name <- tools::file_path_sans_ext(basename(pdf_file))
   
-  # Convert PDF pages to images
-  pdf_images <- image_read_pdf(pdf_path)
-
-  # Initialize a list to store extracted values
-  extracted_values <- list()
+  # Split the file name into ID and year
+  file_parts <- unlist(strsplit(file_name, "_"))
+  ID <- file_parts[1]
+  year <- file_parts[2]
   
-  # Loop through the images and apply OCR
-  for (i in seq_along(pdf_images)) {
-    image_page <- pdf_images[i]
+  # Extract all tables from the PDF
+  tables <- extract_tables(pdf_file, guess = TRUE)
+  
+  # Define the standard column names for the output
+  standard_columns <- c("ID", "year", "B3_DEMAIS", "role_number", "table_index")
+  
+  # Loop over all extracted tables
+  for (table_index in seq_along(tables)) {
+    table <- tables[[table_index]]
     
-    # Apply OCR to the image
-    text_page <- ocr(image_page, engine = tesseract_engine)
+    # Convert the table to a data frame
+    df <- as.data.frame(table, stringsAsFactors = FALSE)
     
-    # Combine all lines into a single string to simulate lines being on the same row
-    combined_text <- gsub("\n", " ", text_page)
+    # Fuzzy match for "B1-RESIDENCIAL" (allowing up to 1 character difference)
+    target_row_index <- which(stringdist::stringdist(df[, 1], "B3-DEMAIS CLASSES", method = "lv") <= 1)
     
-    # Regular expression to find "B1-RESIDENCIAL" followed by the amount
-    pattern <- "B1-RESIDENCIAL\\s*([0-9,.]+)"
-    
-    # Extract the matches for "B1-RESIDENCIAL" with the amount
-    matches <- str_extract_all(combined_text, pattern)
-    
-    # Append the extracted matches to the list
-    if (length(matches[[1]]) > 0) {
-      extracted_values <- c(extracted_values, matches[[1]])
+    # Check if there is a match
+    if (length(target_row_index) > 0) {
+      # Extract the matching row
+      selected_row <- df[target_row_index, ]
+      
+      # Retrieve the full number(s) in the row after "B1-RESIDENCIAL"
+      row_values <- unlist(regmatches(selected_row[1, ], gregexpr("\\d+(\\.\\d+)?", selected_row[1, ])))
+      
+      # Remove any erroneous "1" values that might be captured
+      row_values <- row_values[row_values != "3"]
+      
+      # Limit the extracted numbers to the first 2
+      row_values <- head(row_values, 2)
+      
+      # Check if we successfully retrieved any valid numbers
+      if (length(row_values) > 0) {
+        # Store the results in a temporary data frame
+        temp_df <- data.frame(
+          ID = ID,
+          year = year,
+          B3_DEMAIS = selected_row[1],  # The text in the row
+          role_number = paste(row_values, collapse = ", "),  # Join all numbers in the row
+          table_index = table_index,  # Record which table the data came from
+          stringsAsFactors = FALSE
+        )
+        
+        # Ensure temp_df has the standard column names
+        missing_cols <- setdiff(standard_columns, names(temp_df))
+        for (col in missing_cols) {
+          temp_df[[col]] <- NA  # Add missing columns as NA
+        }
+        
+        # Reorder the columns to match the standard structure
+        temp_df <- temp_df[standard_columns]
+        
+        # Create an output file name
+        output_file <- paste0(output_folder, "/", file_name, "_demais.csv")
+        
+        # Save the data to a CSV file with UTF-8 encoding for Portuguese
+        write.csv(temp_df, output_file, row.names = FALSE, fileEncoding = "UTF-8")
+        cat("Saved extracted data to:", output_file, "\n")
+        
+        # Since we found the first valid row, stop processing further tables and exit the loop
+        break
+      } else {
+        cat("No valid number found in the 'B3-DEMAIS CLASSES' row of table", table_index, "in", pdf_file, "\n")
+      }
     } else {
-      message("No 'B1-RESIDENCIAL' found on page ", i)
+      cat("No fuzzy match for 'B3-DEMAIS CLASSES' found in table", table_index, "in", pdf_file, "\n")
+    }
+  }
+}
+
+# Loop over all PDF files and apply the extraction function
+for (pdf_file in pdf_files) {
+  tryCatch({
+    extract_first_valid_row_and_save(pdf_file, output_folder)
+  }, error = function(e) {
+    message("Error processing file ", pdf_file, ": ", e$message)
+  })
+}
+
+
+```
+
+
+
+#4. Combine retrieve of "B1_RESIDENCIAL", "B2_RURAL", or "B3_DEMAIS"
+```{r}
+
+
+# Paths
+input_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_documents"
+output_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_combined_output"
+
+# Ensure output folder exists
+if (!dir.exists(output_folder)) {
+  dir.create(output_folder, recursive = TRUE)
+}
+
+# List all PDF files in the input folder
+pdf_files <- list.files(input_folder, pattern = "\\.pdf$", full.names = TRUE)
+
+# Function to extract the row and retrieve the number after the variable
+extract_first_valid_row_and_save <- function(pdf_file, output_folder, variable_label, variable_code) {
+  # Extract the filename without extension
+  file_name <- tools::file_path_sans_ext(basename(pdf_file))
+  
+  # Split the file name into ID and year
+  file_parts <- unlist(strsplit(file_name, "_"))
+  ID <- file_parts[1]
+  year <- file_parts[2]
+  
+  # Extract all tables from the PDF
+  tables <- extract_tables(pdf_file, guess = TRUE)
+  
+  # Define the standard column names for the output
+  standard_columns <- c("ID", "year", "Variable", "role_number")
+  
+  # Loop over all extracted tables
+  results_list <- list()  # To store the data for later writing to Excel
+  for (table_index in seq_along(tables)) {
+    table <- tables[[table_index]]
+    
+    # Convert the table to a data frame
+    df <- as.data.frame(table, stringsAsFactors = FALSE)
+    
+    # Fuzzy match for the variable (e.g., B1-RESIDENCIAL, B2-RURAL, B3-DEMAIS CLASSES)
+    target_row_index <- which(stringdist::stringdist(df[, 1], variable_label, method = "lv") <= 1)
+    
+    # Check if there is a match
+    if (length(target_row_index) > 0) {
+      # Extract the matching row
+      selected_row <- df[target_row_index, ]
+      
+      # Retrieve the full number(s) in the row after the variable
+      row_values <- unlist(regmatches(selected_row[1, ], gregexpr("\\d+(\\.\\d+)?", selected_row[1, ])))
+      
+      # Remove any erroneous "1", "2", or "3" values that might be captured
+      row_values <- row_values[row_values != "1" & row_values != "2" & row_values != "3"]
+      
+      # Limit the extracted numbers to the first 2
+      row_values <- head(row_values, 2)
+      
+      # Check if we successfully retrieved any valid numbers
+      if (length(row_values) > 0) {
+        # Store the results in a temporary data frame
+        temp_df <- data.frame(
+          ID = ID,
+          year = year,
+          Variable = variable_code,  # Indicating which variable this row is for
+          role_number = paste(row_values, collapse = ", "),  # Join all numbers in the row
+          stringsAsFactors = FALSE
+        )
+        
+        # Append the result to the list
+        results_list[[length(results_list) + 1]] <- temp_df
+        
+        cat("Extracted data for", variable_code, "from file", pdf_file, "\n")
+        
+      } else {
+        cat("No valid number found in the row of variable", variable_code, "in table", table_index, "in", pdf_file, "\n")
+      }
+    } else {
+      cat("No fuzzy match for", variable_code, "found in table", table_index, "in", pdf_file, "\n")
     }
   }
   
-  # Return the extracted values
-  return(extracted_values)
+  # If results were found, write them to the same Excel file
+  if (length(results_list) > 0) {
+    combined_results <- do.call(rbind, results_list)  # Combine all results into one data frame
+    
+    # Create an Excel file with a sheet named by the ID and Year
+    output_file <- paste0(output_folder, "/", ID, "_", year, "_combined.xlsx")
+    
+    if (file.exists(output_file)) {
+      # Load existing Excel file
+      wb <- loadWorkbook(output_file)
+      addWorksheet(wb, paste0(variable_code, "_data"))
+      writeData(wb, sheet = paste0(variable_code, "_data"), combined_results)
+    } else {
+      # Create new Excel file
+      wb <- createWorkbook()
+      addWorksheet(wb, paste0(variable_code, "_data"))
+      writeData(wb, sheet = paste0(variable_code, "_data"), combined_results)
+    }
+    
+    # Save the Excel file
+    saveWorkbook(wb, output_file, overwrite = TRUE)
+    cat("Saved extracted data to:", output_file, "\n")
+  }
 }
 
-# Loop through the selected PDFs and extract relevant data from images
-all_extracted_data <- lapply(selected_pdfs, extract_b1_residencial_from_image)
+# Loop over all PDF files and apply the extraction function for each variable
+for (pdf_file in pdf_files) {
+  tryCatch({
+    extract_first_valid_row_and_save(pdf_file, output_folder, "B1-RESIDENCIAL", "B1_RESIDENCIAL")
+    extract_first_valid_row_and_save(pdf_file, output_folder, "B2-RURAL", "B2_RURAL")
+    extract_first_valid_row_and_save(pdf_file, output_folder, "B3-DEMAIS CLASSES", "B3_DEMAIS")
+  }, error = function(e) {
+    message("Error processing file ", pdf_file, ": ", e$message)
+  })
+}
 
-# Combine all extracted data into a single vector
-final_extracted_data <- unlist(all_extracted_data)
 
-# Display the extracted results
-print(final_extracted_data)
-
-
-```
-
-
-```{r}
-
-getwd()
-
-setwd("C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_documents")
-
-bank_statement <- pdftools::pdf_convert("CEA_1997.pdf", dpi = 500)
-
-raw_text <- ocr(bank_statement, engine = tesseract("por"))
-
-print(raw_text)
-
-raw_text_combined<- paste(raw_text,collapse="")
-
-deposits_and_additions<- raw_text_combined %>% 
-                         # Need to replace \n
-                         str_replace_all('\\n',';') %>%
-                         str_extract("(?<=B1-RESIDENCIAL).*(?=B1-RESIDENCIAL)") %>% 
-                         str_extract('\\d{2}\\/\\d{2}.*\\.\\d{2}') %>%
-                         str_split(';') %>% 
-                         as_tibble(.name_repair = "unique") %>% 
-                         transmute(consumo = ...1 %>% str_extract("(?<=[A-z] ).*")%>% str_extract('\\d{1,}.*'))
 
 ```
+
 
