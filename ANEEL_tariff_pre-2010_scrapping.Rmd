@@ -40,6 +40,7 @@ pacman::p_load(tidyverse, #packages for data science
                data.table, 
                tabulapdf,
                stringdist,
+               openxlsx,
                tesseract,
                magick,
                rJava) # Fast aggregation of large data
@@ -684,6 +685,8 @@ for (pdf_file in pdf_files) {
     extract_first_valid_row_and_save(pdf_file, output_folder, "B1-RESIDENCIAL", "B1_RESIDENCIAL")
     extract_first_valid_row_and_save(pdf_file, output_folder, "B2-RURAL", "B2_RURAL")
     extract_first_valid_row_and_save(pdf_file, output_folder, "B3-DEMAIS CLASSES", "B3_DEMAIS")
+    extract_first_valid_row_and_save(pdf_file, output_folder, "B4a", "B4a_REDE_DE_DISTRIBUICAO")
+    #extract_first_valid_row_and_save(pdf_file, output_folder, "Consumo mensal", "CONSUMO_MENSAL_ATE_30KWH")
   }, error = function(e) {
     message("Error processing file ", pdf_file, ": ", e$message)
   })
@@ -693,4 +696,130 @@ for (pdf_file in pdf_files) {
 
 ```
 
+
+
+```{r}
+
+# Paths
+input_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_documents"
+output_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_combined_output"
+
+# Ensure output folder exists
+if (!dir.exists(output_folder)) {
+  dir.create(output_folder, recursive = TRUE)
+}
+
+# List all PDF files in the input folder
+pdf_files <- list.files(input_folder, pattern = "\\.pdf$", full.names = TRUE)
+
+# Function to extract the row and retrieve the number after the variable
+extract_first_valid_row_and_save <- function(pdf_file, output_folder, variable_label, variable_code) {
+  # Extract the filename without extension
+  file_name <- tools::file_path_sans_ext(basename(pdf_file))
+  
+  # Split the file name into ID and year
+  file_parts <- unlist(strsplit(file_name, "_"))
+  ID <- file_parts[1]
+  year <- file_parts[2]
+  
+  # Extract all tables from the PDF
+  tables <- extract_tables(pdf_file, guess = TRUE)
+  
+  # Define the standard column names for the output
+  standard_columns <- c("ID", "year", "Variable", "role_number")
+  
+  # Loop over all extracted tables
+  results_list <- list()  # To store the data for later writing to Excel
+  for (table_index in seq_along(tables)) {
+    table <- tables[[table_index]]
+    
+    # Convert the table to a data frame
+    df <- as.data.frame(table, stringsAsFactors = FALSE)
+    
+    # Fuzzy match for the variable (e.g., B1-RESIDENCIAL, B2-RURAL, B3-DEMAIS CLASSES)
+    target_row_index <- which(stringdist::stringdist(df[, 1], variable_label, method = "lv") <= 1)
+    
+    # Check if there is a match
+    if (length(target_row_index) > 0) {
+      # Extract the matching row
+      selected_row <- df[target_row_index, ]
+      
+      # Retrieve the full number(s) in the row after the variable
+      row_values <- unlist(regmatches(selected_row[1, ], gregexpr("\\d+(\\.\\d+)?", selected_row[1, ])))
+      
+      # Remove any erroneous "1", "2", or "3" values that might be captured
+      row_values <- row_values[row_values != "1" & row_values != "2" & row_values != "3"]
+      
+      # Limit the extracted numbers to the first 2
+      row_values <- head(row_values, 2)
+      
+      # Check if we successfully retrieved any valid numbers
+      if (length(row_values) > 0) {
+        # Store the results in a temporary data frame
+        temp_df <- data.frame(
+          ID = ID,
+          year = year,
+          Variable = variable_code,  # Indicating which variable this row is for
+          role_number = paste(row_values, collapse = ", "),  # Join all numbers in the row
+          stringsAsFactors = FALSE
+        )
+        
+        # Append the result to the list
+        results_list[[length(results_list) + 1]] <- temp_df
+        
+        cat("Extracted data for", variable_code, "from file", pdf_file, "\n")
+        
+      } else {
+        cat("No valid number found in the row of variable", variable_code, "in table", table_index, "in", pdf_file, "\n")
+      }
+    } else {
+      cat("No fuzzy match for", variable_code, "found in table", table_index, "in", pdf_file, "\n")
+    }
+  }
+  
+  # If results were found, write them to the same Excel file
+  if (length(results_list) > 0) {
+    combined_results <- do.call(rbind, results_list)  # Combine all results into one data frame
+    
+    # Create an Excel file with a sheet named by the ID and Year
+    output_file <- paste0(output_folder, "/", ID, "_", year, "_combined.xlsx")
+    
+    if (file.exists(output_file)) {
+      # Load existing Excel file
+      wb <- loadWorkbook(output_file)
+      addWorksheet(wb, paste0(variable_code, "_data"))
+      writeData(wb, sheet = paste0(variable_code, "_data"), combined_results)
+    } else {
+      # Create new Excel file
+      wb <- createWorkbook()
+      addWorksheet(wb, paste0(variable_code, "_data"))
+      writeData(wb, sheet = paste0(variable_code, "_data"), combined_results)
+    }
+    
+    # Save the Excel file
+    saveWorkbook(wb, output_file, overwrite = TRUE)
+    cat("Saved extracted data to:", output_file, "\n")
+  } else {
+    cat("No data extracted for", variable_code, "from file", pdf_file, "\n")
+  }
+}
+
+# Loop over all PDF files and apply the extraction function for each variable
+for (pdf_file in pdf_files) {
+  tryCatch({
+    # Existing variable extractions
+    extract_first_valid_row_and_save(pdf_file, output_folder, "B1-RESIDENCIAL", "B1_RESIDENCIAL")
+    extract_first_valid_row_and_save(pdf_file, output_folder, "B2-RURAL", "B2_RURAL")
+    extract_first_valid_row_and_save(pdf_file, output_folder, "B3-DEMAIS CLASSES", "B3_DEMAIS")
+    
+    # New variable extractions
+    extract_first_valid_row_and_save(pdf_file, output_folder, "B4a - Rede de Distribuição", "B4a_REDE_DE_DISTRIBUICAO")
+    extract_first_valid_row_and_save(pdf_file, output_folder, "Consumo mensal até 30 kWh", "CONSUMO_MENSAL_ATE_30KWH")
+  }, error = function(e) {
+    message("Error processing file ", pdf_file, ": ", e$message)
+  })
+}
+
+
+```
 
