@@ -91,8 +91,6 @@ df_result <- df_pos %>%
   group_by(ID, year) %>%
   summarise(B1_RESIDENCIAL = mean(B1_RESIDENCIAL, na.rm = TRUE))
 
-
-
 ```
 
 #Merge "df_pre" and "df_pos"
@@ -115,9 +113,9 @@ df_wide <- df_merged %>%
    arrange(year) %>%  # Ensure Year is in ascending order
   pivot_wider(id_cols = ID, names_from = year, values_from = -c(ID, year))
 
+write.csv(df_wide, "ANEEL_tariff_wide_1997-2024.csv", row.names = FALSE)
+
 ```
-
-
 
 
 # Check the names of the companies before-2010
@@ -160,6 +158,7 @@ merged_df <- merged_df %>% select(-seq)
 print(merged_df)
 
 ```
+
 
 
 #Save

@@ -60,7 +60,8 @@ pacman::p_load(tidyverse, #packages for data science
                basedosdados,
                bigQueryR,
                openxlsx, #save documents excel format
-               googleAuthR) 
+               googleAuthR,
+               readxl) #read excel
 
 
 ```
@@ -68,7 +69,7 @@ pacman::p_load(tidyverse, #packages for data science
 # 2. Load Files
 ```{r}
 
-# Financial Files Files:
+# Financial Files:
 ratios_celpa <- read_excel("Company_financials_ratios_CELPA_dollar.xlsx")
 
 

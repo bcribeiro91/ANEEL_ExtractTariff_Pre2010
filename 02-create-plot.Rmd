@@ -7,13 +7,22 @@ editor_options:
   chunk_output_type: console
 ---
 
+# 0. Clean Environment
+```{r}
+
+rm(list = ls())
+
+```
+
+
+
 # 1. Set Script 
 ## 1.1. Set Folder
 ```{r}
 
 getwd()
 
-setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data")
+setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/DATA_ANEEL")
 
 ```
 
@@ -67,19 +76,46 @@ pacman::p_load(tidyverse, #packages for data science
 
 
 # 2. Load Files
+```{r}
+
+df_all <- read.csv("final_data.csv")
+
+df_all <- df_all %>% filter(Year > 1993)
+
+df_all_firms <- read.csv("final_data_firms.csv")
+
+df_all_firms <- df_all_firms %>% filter(Year > 1993)
+
+```
+
 
 ```{r}
 
-df_all <- read.csv("merged_dataset_distribution_1991-2023.csv")
+# To globally disable scientific notation
+options(scipen = 999) 
+
+# Transform the variables from character to numeric
+df_all <- df_all %>%
+  mutate(
+    revenue = as.numeric(revenue),
+    revenue_tax = as.numeric(revenue_tax),
+    consumption = as.numeric(consumption),
+    consumers = as.numeric(consumers),
+    SAIDI = as.numeric(SAIDI),
+    SAIFI = as.numeric(SAIFI),
+    netprofit_margin = as.numeric(netprofit_margin),
+    debtequity_ratio = as.numeric(debtequity_ratio))
+
 
 ```
+
 
 # New variable (before and after privatization)
 ```{r}
 
 #Create relative time variable (t0= year of privatization)
 df_all <- df_all %>%
-  group_by(Firm_After) %>%
+  group_by(Firm_Final) %>%
   mutate(
     t_privat = if_else(Privatization > 1, Year - Privatization, NA_real_),
     owner_type =if_else(Privatization==0, "state-owned",if_else(Privatization==1, "always private", "privatized")))
@@ -91,10 +127,9 @@ df_all <- df_all %>%
 ```{r}
 
 # Create a bar plot to count the number of firms in each ownership type
-df_all %>%
-  # Group by owner_type and count the number of firms in each category
-  group_by(owner_type) %>%
-  summarise(count = n_distinct(Firm_After), .groups = "drop") %>%
+df_all %>%  # Group by owner_type and count the number of firms in each category
+                group_by(owner_type) %>%
+                summarise(count = n_distinct(Firm_Final), .groups = "drop") %>%
   # Plot the results using ggplot2
   ggplot(aes(x = owner_type, y = count, fill = owner_type)) +
   geom_bar(stat = "identity", show.legend = FALSE) +  # Bar plot
@@ -114,7 +149,7 @@ df_all %>%
 df_priv_count <- df_all %>%
   filter(Privatization > 1) %>%  # Exclude rows where Privatization is 0 or 1
   group_by(Privatization) %>%    # Group by the Privatization year
-  summarise(count_firms = n_distinct(Firm_After), .groups = "drop")  # Count distinct firms privatized each year
+  summarise(count_firms = n_distinct(Firm_Final), .groups = "drop")  # Count distinct firms privatized each year
 
 # Create the bar plot for privatization counts with customized x-axis breaks
 ggplot(df_priv_count, aes(x = Privatization, y = count_firms)) +
@@ -124,9 +159,13 @@ ggplot(df_priv_count, aes(x = Privatization, y = count_firms)) +
     x = "Year of Privatization",
     y = "Number of Firms Privatized"
   ) +
+  scale_y_continuous(
+    breaks = seq(0, 10, by = 1),  # Set x-axis breaks from 1995 to 2023 with 3-year intervals
+    limits = c(0, 10)             # Ensure the axis spans from 1995 to 2023
+  ) +
   scale_x_continuous(
-    breaks = seq(1994, 2023, by = 3),  # Set x-axis breaks from 1995 to 2023 with 3-year intervals
-    limits = c(1994, 2023)             # Ensure the axis spans from 1995 to 2023
+    breaks = seq(1994, 2024, by = 5),  # Set x-axis breaks from 1995 to 2023 with 3-year intervals
+    limits = c(1994, 2024)             # Ensure the axis spans from 1995 to 2023
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
@@ -147,6 +186,24 @@ ggplot(df_all, aes(x = factor(Year), y = SAIDI)) +
     axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for readability
     plot.title = element_text(hjust = 0.5)  # Center the plot title
   )
+
+
+# Facet by "owner_type"
+ggplot(df_all, aes(x = factor(Year), y = SAIDI)) +
+  geom_boxplot(fill = "skyblue", color = "blue") +  # Boxplot with custom colors
+  labs(
+    title = "Annual Distribution of SAIDI",
+    x = "Year",
+    y = "SAIDI"
+  )  +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for readability
+    plot.title = element_text(hjust = 0.5)  # Center the plot title
+  ) +
+  facet_wrap(~ owner_type)  # Facet by "owner_type"
+
+
 ```
 
 
@@ -158,20 +215,124 @@ ggplot(df_all, aes(x = factor(Year), y = SAIFI)) +
   labs(
     title = "Annual Distribution of SAIFI",
     x = "Year",
-    y = "SAIDI"
+    y = "SAIFI"
   ) +
   theme_minimal() +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for readability
     plot.title = element_text(hjust = 0.5)  # Center the plot title
   )
+
+# Facet by "owner_type"
+ggplot(df_all, aes(x = factor(Year), y = SAIFI)) +
+  geom_boxplot(fill = "skyblue", color = "blue") +  # Boxplot with custom colors
+  labs(
+    title = "Annual Distribution of SAIFI",
+    x = "Year",
+    y = "SAIFI"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for readability
+    plot.title = element_text(hjust = 0.5)  # Center the plot title
+  ) +
+  facet_wrap(~ owner_type)  # Facet by "owner_type"
+
 ```
+
+# Consumers and Consumption
+```{r}
+
+# Summarize the data to calculate annual sums
+annual_summary <- df_all %>%
+  group_by(Year, owner_type) %>%
+  summarise(
+    total_consumption = sum(consumption, na.rm = TRUE),  # Sum of annual consumption
+    total_consumers = sum(consumers, na.rm = TRUE),     # Sum of annual number of consumers
+    .groups = "drop"
+  )
+
+# Reshape the data to long format for plotting
+annual_long <- annual_summary %>%
+  pivot_longer(cols = c(total_consumption, total_consumers), 
+               names_to = "Metric", 
+               values_to = "Value") %>%
+  mutate(Value = Value / 1000000)  # Convert values to thousands
+
+# Create the plot with two lines
+ggplot(annual_long, aes(x = Year, y = Value, color = Metric)) +
+  geom_line(size = 1) +  # Line plot
+  labs(
+    title = "Annual Sum of Consumption and Number of Consumers (in Thousands)",
+    x = "Year",
+    y = "Value (in Thousands)",
+    color = "Metric"
+  ) +
+  scale_color_manual(
+    values = c("total_consumption" = "blue", "total_consumers" = "red"),  # Custom line colors
+    labels = c("Annual Consumption", "Annual Number of Consumers")       # Legend labels
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5)
+  )+
+  facet_wrap(~ owner_type)  # Facet by "owner_type"
+
+```
+
+# Revenue
+```{r}
+
+# Summarize the data to calculate annual sums
+annual_summary <- df_all %>%
+  group_by(Year, owner_type) %>%
+  summarise(
+    total_revenue = sum(revenue, na.rm = TRUE),  # Sum of annual consumption
+    .groups = "drop"
+  )
+
+# Reshape the data to long format for plotting
+annual_long <- annual_summary %>%
+  pivot_longer(cols = c(total_revenue), 
+               names_to = "Metric", 
+               values_to = "Value") %>%
+  mutate(Value = Value / 1000000)  # Convert values to thousands
+
+# Create the plot with two lines
+ggplot(annual_long, aes(x = Year, y = Value, color = Metric)) +
+  geom_line(size = 1) +  # Line plot
+  labs(
+    title = "Annual Sum of Revenue (in Thousands)",
+    x = "Year",
+    y = "Value (in Thousands)",
+    color = "Metric"
+  ) +
+  scale_color_manual(
+    values = c("total_revenue" = "blue"),  # Custom line colors
+    labels = c("Annual Consumption")       # Legend labels
+  ) +
+  # scale_x_continuous(
+  #   breaks = seq(1994, 2024, by = 5),  # Set x-axis breaks from 1995 to 2023 with 3-year intervals
+  #   limits = c(1994, 2024)             # Ensure the axis spans from 1995 to 2023
+  # )+
+    theme_minimal() +
+  theme(
+    legend.position = "top",
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5)
+  )+  facet_wrap(~ owner_type)  # Facet by "owner_type"
+
+```
+
+
 
 #Annual Average of Debit Equity Ratio
 ```{r}
 # Calculate the annual average of netprofit_margin
 annual_avg_debtequity_ratio <- df_all %>%
-  group_by(Year) %>%
+  group_by(Year, owner_type) %>%
   summarise(
     avg_debtequity_margin = mean(debtequity_ratio, na.rm = TRUE),  # Calculate annual average
     .groups = "drop"
@@ -190,125 +351,292 @@ ggplot(annual_avg_debtequity_ratio, aes(x = Year, y = avg_debtequity_margin)) +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for better readability
     plot.title = element_text(hjust = 0.5)  # Center the plot title
-  )
+  )+
+  facet_wrap(~ owner_type)  # Facet by "owner_type"
+
 ```
 
 
-
-### Growth Rate Analysis
+#Annual Average of Net Profit Margin
 ```{r}
-#Create average growth rate, median, and 95th confidence interval of mean
-# Step 1: Calculate summary statistics by Class and t_privat
-df_summary <- df_annual %>%group_by(Class, t_privat) %>%
-  summarize(
-    mean_tariff_growth = mean(tariff_growth, na.rm = TRUE),
-    median_tariff_growth = median(tariff_growth, na.rm = TRUE),
-    n = n(),
-    se = sd(tariff_growth, na.rm = TRUE) / sqrt(n),  # Standard error
-    ci_lower = mean_tariff_growth - qt(0.975, df = n - 1) * se,  # 95% confidence interval lower bound
-    ci_upper = mean_tariff_growth + qt(0.975, df = n - 1) * se   # 95% confidence interval upper bound
-  ) %>%
-  ungroup()
-
-# Step 2: Create the facet wrap graph
-# Step 2: Create the facet wrap graph with free y-scale, vertical line at t_privat = 0, and y-axis limits
-
-# Filter the data for the specified classes
-df_filtered <- df_summary %>%
-  filter(Class %in% c("Commercial", "Industrial", "Residential", "Rural"))
-
-# Create the plot with the filtered data and larger text sizes
-g_tariff <- ggplot(df_filtered, aes(x = t_privat, y = mean_tariff_growth)) +
-  geom_line(aes(group = Class), color = "blue") +  # Line for the mean
-  geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper, fill = Class), alpha = 0.2) +  # Confidence interval
-  geom_vline(xintercept = 0, color = "black", linetype = "dashed") +  # Vertical line at t_privat = 0
-  scale_x_continuous(breaks = seq(-10,10,2), limits = c(-10, 10)) +  # X-axis limits
-  scale_y_continuous(breaks = seq(60,200,20), limits = c(60,200)) +  # Y-axis limits
-  labs(
-    x = "Years before/after privatization",
-    y = "Revenue in constant 2023 BRL/MWh"
-  ) +
-  facet_wrap(~Class, scales = "free_y", ncol = 2, nrow = 4) +  # Organize facets in 2 columns and 4 rows
-  theme_bw() +
-  theme(
-    legend.position = "none",   # Remove legend
-    text = element_text(size = 12),  # Set text size to 8pt for all text
-    axis.text = element_text(size = 12),  # Set axis text size
-    axis.title = element_text(size = 12),  # Set axis titles size
-    strip.text = element_text(size = 12)  # Set facet labels size
+# Calculate the annual average of netprofit_margin
+annual_avg_netprofit_margin <- df_all %>%
+  group_by(Year, owner_type) %>%
+  summarise(
+    avg_netprofit_margin = mean(netprofit_margin, na.rm = TRUE),  # Calculate annual average
+    .groups = "drop"
   )
 
-print(g_tariff)
-
-# Save the plot as an image
-ggsave("tariff_growth_plot.png", plot = g_tariff, width = 10, height = 8, dpi = 300)
-
-
+# Create the line graph
+ggplot(annual_avg_netprofit_margin, aes(x = Year, y = avg_netprofit_margin)) +
+  geom_line(color = "blue", size = 1) +  # Line for annual average
+  geom_point(color = "red", size = 2) +  # Points for each year
+  labs(
+    title = "Annual Average of Net Profit Margin",
+    x = "Year",
+    y = "Average Net Profit Margin"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels for better readability
+    plot.title = element_text(hjust = 0.5)  # Center the plot title
+  )+
+  facet_wrap(~ owner_type)  # Facet by "owner_type"
 
 ```
 
-### 4.1.4. Absolute time graph
+
+# 3. Firm-level Data
+
+# Create the line with Firm_Final and Year for companies that have missing data
 ```{r}
-df_summary_2015 <- df_annual %>%
-  group_by(Class, Year, owner_type) %>%
-  summarize(
-    mean_tariff_growth_rel2015 = mean(tariff_growth_rel2015, na.rm = TRUE),
-    mean_tariff_BRL23=mean(Tariff_1223_BRL,na.rm = TRUE),
-    median_tariff_growth_rel2015 = median(tariff_growth_rel2015, na.rm = TRUE),
-    n_rel2015 = n(),
-    se = sd(tariff_growth_rel2015, na.rm = TRUE) / sqrt(n_rel2015),  # Standard error
-    ci_lower_2015 = mean_tariff_growth_rel2015 - qt(0.975, df = n_rel2015 - 1) * se,  # 95% confidence interval lower bound
-    ci_upper_2015 = mean_tariff_growth_rel2015 + qt(0.975, df = n_rel2015 - 1) * se   # 95% confidence interval upper bound
-  )
+# Create a reference data frame with all combinations of Firm_Final and Year (1994 to 2023)
+complete_years <- data.frame(Year = 1994:2023)
+complete_firms <- data.frame(Firm_Final = unique(df_all_firms$Firm_Final))
 
-df_summary_2015 <- df_summary_2015 %>%
-  filter(Class %in% c("Commercial", "Industrial", "Residential", "Rural"))
+# Create a full combination of all Firm_Final and Year pairs
+complete_grid <- expand.grid(Firm_Final = complete_firms$Firm_Final, Year = complete_years$Year)
 
-#absolute time graph
-g_tariff_growthrel2015 <- ggplot(df_summary_2015%>%filter(Year>1994), aes(x = Year, y = mean_tariff_growth_rel2015, color=owner_type)) +
-  geom_line() +  # Line for the mean
-  scale_x_continuous(breaks = seq(1995, 2023, 4)) +  # X-axis breaks only, without limits
-  labs(
-    x = "",
-    y = "Revenue growth in constant 2023 BRL/MWh (2015=100)"
-  ) +
-  facet_wrap(~Class, scales = "free_y", ncol = 2, nrow = 4) +  # Organize facets in 2 columns and 4 rows
-  theme_bw() +
-  theme(
-    legend.position = "bottom",   # Remove legend
-    text = element_text(size = 12),  # Set text size to 12pt for all text
-    axis.text = element_text(size = 12),  # Set axis text size
-    axis.title = element_text(size = 12),  # Set axis titles size
-    strip.text = element_text(size = 12)  # Set facet labels size
-  )
-
-print(g_tariff_rel2015)
-
-ggsave("tariff_growth_plot_ownertype.png", plot = g_tariff_growthrel2015, width = 10, height = 8, dpi = 300)
-
-g_tariff_rel2015 <- ggplot(df_summary_2015 %>% filter(Year > 1994), aes(x = Year, y = mean_tariff_BRL23, color = owner_type)) +
-  geom_line() +  # Line for the mean
-  scale_x_continuous(breaks = seq(1995, 2023, 4)) +  # X-axis breaks only, without limits
-  scale_y_continuous(breaks = seq(300,800,50), limits = c(300,800)) +  # Y-axis limits
-  labs(
-    x = "",
-    y = "Revenue in constant 2023 BRL/MWh",
-    color = "Ownership"  # Label for the legend
-  ) +
-  facet_wrap(~Class, scales = "free_y", ncol = 2, nrow = 4) +  # Organize facets in 2 columns and 4 rows
-  theme_bw() +
-  theme(
-    legend.position = "bottom",   # Set legend at the bottom
-    text = element_text(size = 12),  # Set text size to 12pt for all text
-    axis.text = element_text(size = 12),  # Set axis text size
-    axis.title = element_text(size = 12),  # Set axis titles size
-    strip.text = element_text(size = 12)  # Set facet labels size
-  )
-
-print(g_tariff_rel2015)
-
-ggsave("tariff_plot_ownertype.png", plot = g_tariff_rel2015, width = 10, height = 8, dpi = 300)
+# Join with the original data and fill missing rows with NA
+df_all_firms_complete <- complete_grid %>%
+  left_join(df_all_firms, by = c("Firm_Final", "Year"))
 
 ```
 
+
+#Exclude firms that were always private
+```{r}
+
+df_all_firms <- df_all_firms_complete %>%
+  filter(Privatization != 1)  # Filters rows where Privatization is not equal to 1
+
+```
+
+# Create Privatization variable referent to the year
+```{r}
+
+df_all_firms <- df_all_firms %>%
+  mutate(privatization_year = case_when(
+    Privatization == 0 ~ "0",  # If Privatization is 0, set intervention to "0"
+    Privatization > 1 ~ as.character(if_else(Year >= Privatization, 1, 0))  # If Privatization > 1, set "1" after Privatization year, else "0"
+  ))
+
+```
+
+# Create Privatization variable
+```{r}
+
+#Create relative time variable (t0= year of privatization)
+df_all_firms <- df_all_firms %>%
+  mutate(Treatment = case_when(
+    Privatization == 0 ~ "control",  # If Privatization is 0, set intervention to "0"
+    Privatization > 1 ~ "treated"  # If Privatization > 1, subtract Year from Privatization and convert to character
+  ))
+
+```
+
+
+# Years Before and After
+```{r}
+
+df_all_firms <- df_all_firms %>%
+  mutate(year_before_after = case_when(
+    Privatization == 0 ~ "0",  # If Privatization is 0, set intervention to "0"
+    Privatization == 1 ~ "1",  # If Privatization is 1, set intervention to "1"
+    Privatization > 1 ~ as.character(Year - Privatization)  # If Privatization > 1, subtract Year from Privatization and convert to character
+  ))
+
+```
+
+
+# Creates a unique numeric identifier for each unique Firm_Final
+```{r}
+
+df_all_firms <- df_all_firms %>%
+  mutate(idname = dense_rank(Firm_Final)) 
+
+#df_all_firms$Firm_Final <- toupper(df_all_firms$Firm_Final)
+
+```
+
+
+```{r}
+
+# Reshape the data to long format
+df_all_firms_long <- df_all_firms %>%
+  pivot_longer(cols = c(SAIDI, SAIFI, debtequity_ratio, revenue, consumers, consumption),
+               names_to = "variable", 
+               values_to = "value")
+
+# Convert 'year_before_after' to numeric (with negative values allowed)
+df_all_firms_long <- df_all_firms_long %>%
+  mutate(year_before_after = as.numeric(gsub("[^0-9.-]", "", `year_before_after`)))  # Allow for negative signs
+
+
+# Calculate the average of each variable for each year
+df_all_firms_avg <- df_all_firms_long %>%
+  group_by(year_before_after, variable) %>%
+  summarise(avg_value = mean(value, na.rm = TRUE), .groups = "drop")
+
+# Plot with geom_line for the average values
+ggplot(df_all_firms_avg, aes(x = year_before_after, y = avg_value, color = variable, group = variable)) +
+  geom_line() +  # Adds lines for each variable
+  facet_wrap(~ variable, scales = "free_y") +  # Creates separate plots for each variable
+  labs(
+    title = "Average Time Series of Different Variables",
+    x = "Year (Before/After)",
+    y = "Average Value"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5)  # Center the plot title
+  )
+
+```
+
+
+
+
+
+
+# 4. Difference-in-difference implementation
+```{r OLS Regression Models: PATENT H}
+
+#SAIDI
+reg_saidi <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "pooling",
+                   index = c("Firm_Final", "Year"))
+summary(reg_saidi)
+
+#SAIFI
+reg_saifi <- plm(SAIFI ~ privatization_year, data = df_all_firms, model = "pooling",
+                   index = c("Firm_Final", "Year"))
+summary(reg_saifi)
+
+
+#PROFIT
+reg_profit <- plm(netprofit_margin ~ privatization_year, data = df_all_firms, model = "pooling",
+                   index = c("Firm_Final", "Year"))
+summary(reg_profit)
+
+
+#DEBIT
+reg_debit <- plm(debtequity_ratio ~ privatization_year, data = df_all_firms, model = "pooling",
+                   index = c("Firm_Final", "Year"))
+summary(reg_debit)
+
+#consumers
+reg_consumers <- plm(consumers ~ privatization_year, data = df_all_firms, model = "pooling",
+                   index = c("Firm_Final", "Year"))
+summary(reg_consumers)
+
+
+#consumption
+reg_consumption <- plm(consumption ~ privatization_year, data = df_all_firms, model = "pooling",
+                   index = c("Firm_Final", "Year"))
+summary(reg_consumption)
+
+#revenue
+reg_revenue <- plm(revenue ~ privatization_year, data = df_all_firms, model = "pooling",
+                   index = c("Firm_Final", "Year"))
+summary(reg_revenue)
+
+
+```
+
+```{r Test: OLS regression OR fixed effect model? - PATENTS H}
+#Test for poolability of data: pFtest(PATENTS H)
+#all patents h, all controls
+
+did_reg_saidi_with <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "within", 
+                 index = c("Firm_Final", "Year"))
+
+did_reg_saidi_pool <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "pooling", 
+                 index = c("Firm_Final", "Year"))
+
+pFtest(did_reg_saidi_with,did_reg_saidi_pool)
+
+```
+
+```{r TIME FIXED EFFECTS}
+reg_saidi_FEtime <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "within", effect = "time", index = c("Firm_Final", "Year"))
+summary(reg_saidi_FEtime)
+
+```
+
+```{r COUNTRY FIXED EFFECTS}
+reg_saidi_FEcountry <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "within", effect = "individual", index = c("Firm_Final", "Year"))
+summary(reg_saidi_FEcountry)
+```
+
+```{r TWO-WAY FIXED EFFECTS}
+twoway_H <- plm(patents_H_application ~ RDI_regulation + Personnel + Budget + ValueRegulation + ihs_GDPfull + ElecConsumption, data = base, model = "within", effect = "twoway",
+                 index = c("country", "Year"))
+summary(twoway_H)
+
+twoway_H <- plm(patents_H_application ~ RDI_regulation, data = base, model = "within", 
+                effect = "twoway",
+                index = c("country", "Year"))
+                summary(twoway_H)
+
+```
+
+```{r Testing for FIXED OR RANDOM}
+#FIXED
+fixed_H <- plm(patents_H_application ~ RDI_regulation + Personnel + Budget + ValueRegulation + ElecConsumption + ihs_GDPfull, data=base, index=c("country", "Year"), model="within")
+summary(fixed_H)
+
+# Display the fixed effects (constants for each country)
+fixef(fixed_H)    
+
+# Testing for fixed effects, null: OLS better than fixed
+pFtest(fixed_H, reg_H_app_5)
+
+#RANDOM
+random_H <- plm(patents_H_application ~ RDI_regulation + Personnel + Budget + ValueRegulation + ElecConsumption + ihs_GDPfull, data=base, index=c("country", "Year"), model="random")
+summary(random_H)
+
+#FIXED OR RANDOM: Hausman test
+phtest(fixed_H, random_H)
+
+#Testing for time-fixed effects
+fixed_H_time <- plm(patents_H_application ~ RDI_regulation + Personnel + Budget + ValueRegulation + ElecConsumption + ihs_GDPfull + factor(Year), data=base, index=c("country", "Year"), model="within")
+summary(fixed_H_time)
+
+pFtest(fixed_H_time, fixed_H)
+
+plmtest(fixed_H, c("time"), type=("bp"))
+#time fixed as well as unit fixed effects are present, hence two-way FE model is to be chosen#
+
+```
+
+```{r Model Test: Serial correlation, heteroskedacity}
+#FINAL TWO Way FE Model#
+did_reg_H <- plm(patents_H_application ~ RDI_regulation + Personnel + Budget + ValueRegulation + ihs_GDPfull + ElecConsumption, data = base, model = "within", effect = "twoway",
+                 index = c("country", "Year"))
+summary(did_reg_H)
+
+# Pasaran CD (cross-sectional dependence) test reveals NO cross-sectional dependence#
+pcdtest(did_reg_H, test = c("cd"))
+
+#Testing for serial correlation, reveals serial correlation!#*
+pbgtest(did_reg_H)
+
+#Testing for unit roots/stationarity reveals no unit root present#
+Panel.set <- pdata.frame(base, index = c("country", "Year"))
+
+adf.test(Panel.set$patents_H_application, k=2)
+
+#  Breusch-Pagan for heteroskedasticity*
+bptest(patents_H_application ~ RDI_regulation + Personnel + Budget + ValueRegulation + ElecConsumption + ihs_GDPfull + factor(country), data = base, studentize=F)
+
+#Estimation with cluster robust standard errors#
+
+coeftest(did_reg_H, 
+         vcov = vcovHC(did_reg_H, 
+                       method = "arellano",
+                       cluster = "group",
+                       type="HC0"))
+
+```
 

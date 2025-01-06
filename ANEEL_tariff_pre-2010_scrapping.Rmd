@@ -19,24 +19,71 @@ editor_options:
 # Load Packages
 ```{r setup, include=FALSE}
 
-rm(list=ls())
 
-library(rvest) # package for web scrapping
-library(tidyverse)
-library(htmltools)
-library(readtext)
-library(httr)
-library(readr)
-library(httr)
-library(ggplot2)
-library(pdftools)
-library(stringr)
+if (!require("pacman")) install.packages("pacman") #pacman will not accept a character vector so the same packages are repeated
 
-library(tabulapdf)
-
-remotes::install_github(c("ropensci/tabulapdf"), INSTALL_opts = "--no-multiarch")
+pacman::p_load(tidyverse, #packages for data science
+               plm, #estimation of linear panel models
+               ggplot2,  #creating graphics
+               lmtest, #testing linear regression Models
+               tseries, #Augmented Dickey-Fuller Test
+               clubSandwich, #robustness checks
+               sandwich, #robustness checks
+               stargazer, #formatting tables for publications
+               devtools, #web developer tools 
+               rmarkdown, #reproducibility
+               tidyr,  #changing the shape and hierarchy of a data set
+               dplyr, #grammar of data manipulation
+               Synth, #importing and exporting
+               SCtools, #extensions for Synthetic Controls Analysis
+               MSCMT,  #Multivariate Synthetic Control Method
+               gsynth, #generalized Synthetic Control Method
+               panelView, #visualize data panels
+               httr, # call url
+               jsonlite, # use API
+               DataExplorer, # Automated Exploratory Data Analysis
+               kableExtra, #formatting tables
+               webshot, #enable table exportation with kableExtra
+               ggrepel, #labels with ggplot
+               ggthemes, #different graph themes for ggplot
+               ggpubr, #put figures together
+               car, # check multicollinearity
+               lmtest, # robust standard errors
+               #scpi, #  SCM with Multiple Treated Units and Staggered Adoption
+               synthdid, # Synthetic Difference in Differences Estimation
+               plm, # linear models for panel data
+               abind, # Combine Multidimensional Arrays
+               data.table,# Fast aggregation of large data
+               rvest,
+               htmltools,
+               readtext,
+               httr, # call url
+               readr,
+               pdftools,
+               stringr,
+               tabulapdf,
+               tabulizer) 
 
 ```
+
+
+#Table packages
+```{r}
+
+if (!require(remotes)) install.packages("remotes")
+
+# on 64-bit Windows
+remotes::install_github(c("ropensci/tabulapdf"), INSTALL_opts = "--no-multiarch")
+
+# elsewhere
+remotes::install_github(c("ropensci/tabulapdf"))
+
+
+remotes::install_github(c("ropensci/tabulizerjars", "ropensci/tabulizer"), INSTALL_opts = "--no-multiarch")
+
+```
+
+
 
 #Data
 ```{r}
@@ -51,7 +98,7 @@ setwd("C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distrib
 ```{r}
 
 # Define the path to your CSV file
-source_csv <- read.csv("file_ANEEL_Links documents_scrap.csv")
+source_csv <- read.csv("file_ANEEL_links_documents_scrap.csv")
 
 ```
 
@@ -109,8 +156,6 @@ for (i in 1:nrow(data)) {
 ```{r}
 
 # Load required libraries
-library(pdftools)
-library(tabulizer)
 
 # Define folder paths
 input_folder <- "C:/Users/wb618493/OneDrive - WBG/Documents/ASA - Privitazation of Distribution/Brazil/Data/ANEEL_tariff_documents"

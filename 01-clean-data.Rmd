@@ -81,17 +81,19 @@ Period: 2003-2024 (ANEEL): https://portalrelatorios.aneel.gov.br/luznatarifa/cat
 Period: 1991-2002 (ANEEL):https://www.gov.br/aneel/pt-br/centrais-de-conteudos/relatorios-e-indicadores/tarifas-e-informacoes-economico-financeiras 
 ```{r}
 
-samp_1991_2002 <- read_excel("samp_aneel_1991-2002.xlsx")
+# Define the file names
+file_names <- c(
+  "samp_aneel_1991-2002.xlsx",
+  "samp_aneel_2003-2007.xlsx",
+  "samp_aneel_2008-2011.xlsx",
+  "samp_aneel_2012-2015.xlsx",
+  "samp_aneel_2016-2020.xlsx",
+  "samp_aneel_2021-2023.xlsx"
+)
 
-samp_2003_2007 <- read_excel("samp_aneel_2003-2007.xlsx")
-
-samp_2008_2011 <- read_excel("samp_aneel_2008-2011.xlsx")
-
-samp_2012_2015 <- read_excel("samp_aneel_2012-2015.xlsx")
-
-samp_2016_2020 <- read_excel("samp_aneel_2016-2020.xlsx")
-
-samp_2021_2023 <- read_excel("samp_aneel_2021-2023.xlsx")
+# Read all files into a list and bind them together
+samp_data <- lapply(file_names, read_excel)
+samp_2003_2023 <- do.call(rbind, samp_data[2:6]) # Exclude the first dataset if needed
 
 ```
 
@@ -191,8 +193,8 @@ ipca_monthly_trans <- read.csv("ipca_deflator_monthly.csv")
 ```{r}
 
 # Perform the rbind to merge the datasets
-samp_2003_2023 <- rbind(samp_2003_2007, samp_2008_2011, samp_2012_2015, 
-                            samp_2016_2020, samp_2021_2023)
+#samp_2003_2023 <- rbind(samp_2003_2007, samp_2008_2011, samp_2012_2015, 
+#                            samp_2016_2020, samp_2021_2023)
 
 ```
 
@@ -647,7 +649,6 @@ merged_dataset <- samp_1991_2023_names %>%
 # Create a dataset to know the companies 
 ```{r}
 
-df_collapsed_before <- merged_dataset %>%
   ungroup() %>%                     # Remove existing grouping
   select(Firm, Year, SAIDI) %>% # Select specific columns
   distinct(Firm, Year) %>%          # Remove duplicates based on Firm and Year
