@@ -123,76 +123,8 @@ for (i in 1:nrow(data)) {
 
 ```
 
-## Retrieve ALL INFORMATION (residential, rural....) the role table from PDF
-```{r}
 
-
-# Define folder paths
-input_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_documents"
-output_folder <- "C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff/ANEEL_tariff_all"
-
-
-# Ensure output folder exists
-if (!dir.exists(output_folder)) {
-  dir.create(output_folder, recursive = TRUE)
-}
-
-# List all PDF files in the input folder
-pdf_files <- list.files(input_folder, pattern = "\\.pdf$", full.names = TRUE)
-
-# Define the relevant column patterns to search for (with relaxed matching for "DEMAN" and "CONSU")
-columns_to_extract <- c("TARIFA CONVENCIONAL", "DEMAN", "CONSU")
-                        # , 
-                        # "A2", "A3", "A3 COOPERATIVA DE ELETRIFICAÇÃO RURAL", 
-                        # "A3a", "A4", "A4a COOPERATIVA DE ELETRIFICAÇÃO RURAL TIPO 1", 
-                        # "A4b COOPERATIVA DE ELETRIFICAÇÃO RURAL TIPO 2", 
-                        # "A4c COOPERATIVA DE ELETRIFICAÇÃO RURAL TIPO 3", 
-                        # "AS (Subterrâneo)", "B1-RESIDENCIAL", 
-                        # "B1-RESIDENCIAL BAIXA RENDA", "B2-RURAL", 
-                        # "B2-COOPERATIVA DE ELETRIFICAÇÃO RURAL", 
-                        # "B2-SERVIÇO DE IRRIGAÇÃO")
-
-# Function to extract only the first table from a PDF file and save it as CSV
-extract_first_table_and_save <- function(pdf_file, output_folder, columns_to_extract) {
-  # Extract all tables from the PDF
-  tables <- extract_tables(pdf_file, guess = TRUE)
-  
-  # Check if any tables were extracted
-  if (length(tables) > 0) {
-    # Extract the first table only
-    first_table <- tables[[1]]
-    
-    # Convert the table to a data frame
-    df <- as.data.frame(first_table, stringsAsFactors = FALSE)
-    
-    # Filter the data frame for relevant columns using relaxed pattern matching
-    selected_columns <- df[, grepl(paste(columns_to_extract, collapse = "|"), df, ignore.case = TRUE), drop = FALSE]
-    
-    # Check if the resulting data frame has any relevant columns
-    if (ncol(selected_columns) > 0) {
-      # Create an output file name
-      output_file <- paste0(output_folder, "/", tools::file_path_sans_ext(basename(pdf_file)), "_first_table.csv")
-      
-      # Save the filtered table to a CSV file with UTF-8 encoding for Portuguese
-      write.csv(selected_columns, output_file, row.names = FALSE, fileEncoding = "UTF-8")
-      cat("Saved first table to:", output_file, "\n")
-    } else {
-      cat("No relevant columns found in", pdf_file, "\n")
-    }
-  } else {
-    cat("No tables found in", pdf_file, "\n")
-  }
-}
-
-# Loop over all PDF files and apply the extraction function
-for (pdf_file in pdf_files) {
-  extract_first_table_and_save(pdf_file, output_folder, columns_to_extract)
-}
-
-```
-
-
-#1. Combine retrieve of "B1_RESIDENCIAL", "B2_RURAL", or "B3_DEMAIS"
+#1. Combine retrieve of "B1_RESIDENCIAL", "B2_RURAL", "B3_DEMAIS", "B4a_REDE_DE_DISTRIBUICAO" and "CONSUMO_MENSAL_ATE_30KWH"
 ```{r}
 
 # Paths
@@ -339,7 +271,7 @@ combined_data <- data.frame(
 )
 
 # Variables to extract
-variables <- c("B1_RESIDENCIAL", "B2_RURAL", "B3_DEMAIS", "B4a_REDE_DE_DISTRIBUICAO", "CONSUMO_MENSAL_ATE_30KWH")
+variables <- c("B1_RESIDENCIAL", "B2_RURAL", "B3_DEMAIS", "B4a_REDE_DE_DISTRIBUICAO")
 
 # Loop over Excel files
 for (excel_file in excel_files) {
@@ -360,7 +292,7 @@ for (excel_file in excel_files) {
       
       if (length(matching_sheet) > 0) {
         # Read the first row of the sheet
-        sheet_data <- read_excel(excel_file, sheet = matching_sheet, range = "A2:D2", col_names = FALSE)
+        sheet_data <- read_excel(excel_file, sheet = matching_sheet, range = "A3:D3", col_names = FALSE)
         
         # Retrieve the value from the fourth column
         value <- sheet_data[[4]]
