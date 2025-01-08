@@ -76,7 +76,7 @@ pacman::p_load(tidyverse, #packages for data science
 
 # 2. Data
 
-## 2.0. General Datasets
+## 2.1. General Datasets
 ```{r}
 
 # 1. Name Harmonization File
@@ -88,7 +88,7 @@ ipca_monthly_trans <- read.csv("ipca_deflator_monthly.csv")
 
 ```
 
-### 4.1.1. SAMP - ANEEL: Retrieve inflation data IPCA from Base dos dados: https://basedosdados.org/dataset/ea4d07ca-e779-4d77-bcfa-b0fd5ebea828?table=f1fd2eb7-467a-403b-8f1c-2de8eff354e6
+### 2.1.1. SAMP - ANEEL: Retrieve inflation data IPCA from Base dos dados: https://basedosdados.org/dataset/ea4d07ca-e779-4d77-bcfa-b0fd5ebea828?table=f1fd2eb7-467a-403b-8f1c-2de8eff354e6
 ```{r}
 ## set the google cloud console ID and project
 # basedosdados::set_billing_id("inflation-ipca")
@@ -111,7 +111,7 @@ ipca_monthly_trans <- read.csv("ipca_deflator_monthly.csv")
 
 
 
-## 2.1.SAMP - ANEEL
+## 2.2.SAMP - ANEEL
 ```{r}
 
 # 1. File Reading and Combining
@@ -236,7 +236,7 @@ df_1991_2023_deflated_names$Firm_Final <- toupper(df_1991_2023_deflated_names$Fi
 ```
 
 
-# 2.2.  FEC & DEC - ANEEL
+## 2.3.  FEC & DEC - ANEEL
 ```{r}
 
 # 1. File Reading and Combining
@@ -308,7 +308,7 @@ dec_fec_1993_2023$Firm_Final <- toupper(dec_fec_1993_2023$Firm_Final)
 
 ```
 
-## 2.3.  EMIS Next: 
+## 2.4.  EMIS Next
 ```{r}
 
 # 1. Set Working Directory
@@ -365,6 +365,94 @@ df_financial_1996_2023_names$Firm_Final <- toupper(df_financial_1996_2023_names$
 
 # Save data (optional)
 # write.csv(df_financial_1996_2023_names, "EMIS_1993_2023.csv", row.names = FALSE)
+
+```
+
+
+## 2.5.  ANEEL: Tariffs
+```{r}
+
+setwd("C:/Users/Ribeiro/Documents/POS-GRADUAÇÃO/POSTDOC/ANEEL_tariff")
+
+# File: ANEEL Tariffs: 1997-2010
+tariff_1997_2010 <- read.csv("ANEEL_tariff_1997-2010_raw.csv")
+
+# File: ANEEL Tariffs: 2010-2024
+tariff_2010_2024 <- read_excel("ANEEL_tariff_2010-2024_raw.xlsx")
+
+
+# Select columns from tariff_2010_2024
+tariff_2010_2024_sel <- select(tariff_2010_2024, c(1,3,8, 14,15))
+
+# Sum: TUSD and TE
+tariff_2010_2024_sel <- tariff_2010_2024_sel %>% 
+                            mutate(tariff = TUSD + TE)
+
+#Rename "Inicio Vigencia" column
+names(tariff_2010_2024_sel)[2] = "AnoMesDia"
+
+## Change Format Data
+tariff_2010_2024_sel <- tariff_2010_2024_sel %>%
+  mutate(MêsAno = as.Date(AnoMesDia),
+         Year = year(AnoMesDia),
+         Month = month(AnoMesDia),
+         Day = day(AnoMesDia)) %>%
+  select(-AnoMesDia)
+
+
+# Select columns from tariff_2010_2024
+tariff_2010_2024_sel <- select(tariff_2010_2024_sel, c(1,2,5,7))
+
+
+#2. Merge dataset "tariff_1997_2010" and "tariff_2010_2024_sel"
+
+# Exclude from "tariff_1997_2010" year=2010
+tariff_1997_2010_sel <- tariff_1997_2010 %>%
+  filter(year != 2010)
+
+
+# Uniform "column" and "Classe and Variable" names 
+colnames(tariff_2010_2024_sel)[1:4] <- c("firm", "class", "tariff", "year")
+colnames(tariff_1997_2010_sel)[1:4] <- c("firm", "year", "class", "tariff")
+
+
+# Change class names
+tariff_2010_2024_sel <- tariff_2010_2024_sel %>%
+  mutate(class = case_when(
+    class == "Residencial" ~ "B1_RESIDENCIAL",
+    class == "Rural" ~ "B2_RURAL",
+    class == "Não se aplica" ~ "B3_DEMAIS",
+    class == "Iluminação pública" ~ "B4a_REDE_DE_DISTRIBUICAO",
+    TRUE ~ class  # Keep other values unchanged
+  ))
+
+
+# Capitalize the firms' names under in tariff_2010_2024_sel
+tariff_2010_2024_sel$firm <- toupper(tariff_2010_2024_sel$firm)
+
+
+# Append both datasets
+tariff_1997_2024 <- rbind(tariff_1997_2010_sel, tariff_2010_2024_sel)
+
+
+#Check for ducplicates. The are 900 duplicates because in the same year there were sometimes tariffs' adjustments
+duplicates <- tariff_1997_2024 %>%
+  dplyr::group_by(firm, year, class) %>%
+  dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+  dplyr::filter(n > 1L)
+
+# Given the duplicate situation on the same year, a simple average was taken. 
+tariff_1997_2024 <- tariff_1997_2024 %>%
+  dplyr::group_by(firm, year, class) %>%
+  dplyr::summarise(tariff = mean(tariff, na.rm = TRUE), .groups = "drop")
+
+# Long to wide format
+tariff_1997_2024_wide <- tariff_1997_2024 %>%
+  pivot_wider(
+    names_from = class,  # The categories in "class" become column names
+    values_from = tariff # The values come from the "tariff" column
+  )
+
 
 ```
 
