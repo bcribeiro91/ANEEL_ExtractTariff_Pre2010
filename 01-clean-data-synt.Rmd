@@ -412,8 +412,8 @@ tariff_1997_2010_sel <- tariff_1997_2010 %>%
 
 
 # Uniform "column" and "Classe and Variable" names 
-colnames(tariff_2010_2024_sel)[1:4] <- c("firm", "class", "tariff", "year")
-colnames(tariff_1997_2010_sel)[1:4] <- c("firm", "year", "class", "tariff")
+colnames(tariff_2010_2024_sel)[1:4] <- c("Firm", "class", "tariff", "year")
+colnames(tariff_1997_2010_sel)[1:4] <- c("Firm", "year", "class", "tariff")
 
 
 # Change class names
@@ -452,6 +452,19 @@ tariff_1997_2024_wide <- tariff_1997_2024 %>%
     names_from = class,  # The categories in "class" become column names
     values_from = tariff # The values come from the "tariff" column
   )
+
+# Harmonize names to enable merge --> need to perform this step
+tariff_1997_2024_names <- tariff_1997_2024_wide %>%
+  left_join(df_names, by = c("Firm" = "Before_Privatization"), relationship = "many-to-many") %>%
+  mutate(Firm_Final = After_Privatization) %>%
+  select(-After_Privatization) %>%
+  select(-Firm) %>%
+  select(-Type) %>%
+  filter(!is.na(Year))  # Remove rows where Year is NA
+
+# Save data (optional)
+#write.csv(tariff_1997_2024_wide, "ANEEL_tariffs_1997_2024.csv", row.names = FALSE)
+
 
 
 ```
