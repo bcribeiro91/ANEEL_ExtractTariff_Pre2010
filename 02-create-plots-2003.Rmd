@@ -78,7 +78,12 @@ pacman::p_load(tidyverse, #packages for data science
                openxlsx) # write xlsx file 
 
 
+
+
+print(.libPaths())
+
 ```
+
 
 # 2. Load Files
 ## 2.1. Load dataset
@@ -90,7 +95,7 @@ df_all <- df_all %>% filter(Year > 1996)
 
 df_all_firms <- read.csv("source/final_data_firms.csv")
 
-df_all_firms <- df_all_firms %>% filter(Year > 1996)
+df_all_firms <- df_all_firms %>% filter(Year > 2002)
 
 ```
 
@@ -118,6 +123,14 @@ df_all <- df_all %>%
 
 ## 3.2. Create new variable (before and after privatization)
 ```{r}
+
+
+df_all_firms <- df_all_firms %>%
+  mutate(Privatization = case_when(
+    Privatization >= 1995 & Privatization <= 2002 ~ 1,  # Convert to 1
+    TRUE ~ Privatization  # Keep other values unchanged
+  ))
+
 
 #Create relative time variable (t0= year of privatization)
 df_all_firms <- df_all_firms %>%
@@ -171,12 +184,13 @@ ggplot(df_priv_count, aes(x = Privatization, y = count_firms)) +
     limits = c(0, 10)             # Ensure the axis spans from 1995 to 2023
   ) +
   scale_x_continuous(
-    breaks = seq(1994, 2024, by = 5),  # Set x-axis breaks from 1995 to 2023 with 3-year intervals
-    limits = c(1994, 2024)             # Ensure the axis spans from 1995 to 2023
+    breaks = seq(2003, 2024, by = 5),  # Set x-axis breaks from 1995 to 2023 with 3-year intervals
+    limits = c(2003, 2024)             # Ensure the axis spans from 1995 to 2023
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
 ```
+
 
 ## 4.2. boxplot of SAIDI by Year
 ```{r}
@@ -467,20 +481,6 @@ df_all_firms <- df_all_firms_complete %>%
 ```
 
 
-## 5.7. Create 2 groups based on the privatization period
-```{r}
-
-df_all_firms <- df_all_firms %>%
-  mutate(group = case_when(
-    Privatization >= 1995 & Privatization <= 2002 ~ 1995,  # Assign 1995 to values in range 1995-2002
-    Privatization >= 2016 & Privatization <= 2023 ~ 2016,  # Assign 2026 to values in range 2016-2023
-    TRUE ~ 0  # Assign 0 to all other values
-  ))
-
-```
-
-
-
 ## 5.7. Graph of the Main Variables: Before and After Privatization
 ```{r}
 
@@ -524,12 +524,12 @@ ggplot(df_all_firms_avg, aes(x = year_before_after, y = avg_value, color = varia
 
 # Convert character to numeric and compute log while handling zeros and warnings
 df_all_firms <- df_all_firms %>%
-  mutate(across(c(revenue, revenue_tax, consumption, consumers, tax), 
+  mutate(across(c(revenue, revenue_tax, consumption, consumers, tax, B1_RESIDENCIAL, B2_RURAL, B3_DEMAIS, B4a_REDE_DE_DISTRIBUICAO), 
                 ~ log(as.numeric(.) + 1), .names = "log_{.col}"))  # Adding 1 to avoid log(0)
 
 
 
-corrplot(corr = cor(df_all_firms[, c(4:11, 23:27)], use="pairwise.complete.obs"),
+corrplot(corr = cor(df_all_firms[, c(4:11, 23:31)], use="pairwise.complete.obs"),
          addCoef.col = "white",
          number.cex = 0.8,
          number.digits = 1,
@@ -540,13 +540,25 @@ corrplot(corr = cor(df_all_firms[, c(4:11, 23:27)], use="pairwise.complete.obs")
          mar = c(1,1,1,1)) #pairwise.complete.obs, because there are too many NAs
 
 
-GGally::ggpairs(df_all_firms[, c(4:11, 20, 23:27)],
+GGally::ggpairs(df_all_firms[, c(4:11, 20, 23:31)],
                 ggplot2::aes(colour = Treatment))
 
-str(df_all_firms)
 
 ```
 
+
+```{r 2.3.1. Variance Inflation Factor (VIF): PATENT TECHNOLOGIES}
+
+
+reg_TEC <- plm(SAIFI ~ privatization_year + log_consumers + debtequity_ratio + B1_RESIDENCIAL, data = df_all_firms, model = "pooling", index = c("Firm_Final", "Year"))
+  summary(reg_TEC)
+
+#variance inflation factor (VIF), Test for Multicolinearity
+vif(reg_TEC)
+
+#Values of VIF under 5, GDP was excluded due to multicolineatiry
+
+```
 
 # Summary Statistics
 ```{r}
@@ -576,33 +588,18 @@ df_all_firms <- df_all_firms %>%
 # TwoWayFE - Calway and Santanna 
 ```{r}
 
-
-# PATENTS TECHNOLOGIES
-group_effectH <- att_gt(yname = "SAIDI", 
-                        gname = "group", 
-                       idname = "idname", 
-                       tname = "Year", 
-                       xformla = ~ NULL, 
-                       data = df_all_firms, 
-                       allow_unbalanced_panel = TRUE, 
-                       est_method = "reg", 
-                       bstrap=TRUE)
-summary(group_effectH)
-
-
-
 # Group Treatment 
-# cs21 = att_gt(
-#     yname         = "consumers",
-#     tname         = "Year",
-#     idname        = "idname",
-#     gname         = "Privatization",
-#   # xformla       = NULL,            # No additional controls in this dataset 
-#     control_group = "notyettreated", # Too few groups for "nevertreated" default
-#     clustervars   = "idname", 
-#     data          = df_all_firms
-#     )
-# cs21
+cs21 = att_gt(
+    yname         = "SAIFI",
+    tname         = "Year",
+    idname        = "idname",
+    gname         = "Privatization",
+  # xformla       = NULL,            # No additional controls in this dataset
+    control_group = "notyettreated", # Too few groups for "nevertreated" default
+    clustervars   = "idname",
+    data          = df_all_firms
+    )
+cs21
 
 
 cs21_es = aggte(cs21, type = "dynamic", min_e = -10, max_e = 10, cband = FALSE)
@@ -612,18 +609,19 @@ ggdid(cs21_es, title = "(cs)did")
 
 ```
 
+
 # Package: did_multiplegt
 ```{r TwoWayFEWeights Chaisemartin, D'Haultfoeuille Package}
 
 #Chaisemartin and D'Haultfoeuille recommend the first, to compute the weights attached to their regression and the ratio of |βbfe| divided by the standard deviation of the weights. If many weights are negative, and if the ratio is not very large, we recommend that they compute our new estimator.
 
 #Estimation of the weights according to Chaisemartin and D'Haultfoeuille, using feTR = which estimates the weights and sensitivity measures attached to the fixed-effects regression under the common trends assumption
-did_multiplegt(df = df_all_firms, Y = "SAIDI", G = "Firm_Final", T = "Year", D = "privatization_year", mode = "old")
+did_multiplegt(df = df_all_firms, Y = "SAIFI", G = "Firm_Final", T = "Year", D = "privatization_year", mode = "old")
 
 #The result show not many negative weights, and not very large ratios, nevertheless we compute the DiD with multiple periods of Chaisemartin and D'Haultfoeuille, as a matter of robustness.
 
 mod_dCDH20 = did_multiplegt(
-  df_all_firms, 'SAIDI', 'Firm_Final', 'Year', 'privatization_year', # original regression params
+  df_all_firms, 'SAIFI', 'Firm_Final', 'Year', 'privatization_year', # original regression params
   dynamic   = 5,                  # no. of post-treatment periods
   placebo   = 5,                  # no. of pre-treatment periods
   brep      = 20,                  # no. of bootstraps (required for SEs)
@@ -642,20 +640,61 @@ did_multiplegt_dyn(df = df_all_firms,
                    group = "Firm_Final", 
                    time = "Year", 
                    treatment = "privatization_year",
-                   controls = c("log_consumers", "log_consumption"))
+                   controls = c("log_consumers"))
 
-mod_dCDH24 = did_multiplegt_dyn(
-  df = df_all_firms, "debtequity_ratio", "Firm_Final", "Year",  "privatization_year", # original regression params
+did_saifi = did_multiplegt_dyn(
+  df = df_all_firms, "SAIFI", "Firm_Final", "Year",  "privatization_year", # original regression params
   effects   = 5,                  # no. of post-treatment periods
-  placebo   = 10,                  # no. of pre-treatment periods
+  placebo   = 5,                  # no. of pre-treatment periods
   cluster   = 'Firm_Final',                 # variable to cluster SEs on
-  controls = c("log_consumers", "consumption")
+  controls = c("log_consumers")
   )
 
-print(mod_dCDH24)
-str(df_all_firms)
+print(did_saifi)
+
 
 ```
+
+
+```{r}
+
+did_saidi = did_multiplegt_dyn(
+  df = df_all_firms, "SAIDI", "Firm_Final", "Year",  "privatization_year", # original regression params
+  effects   = 5,                  # no. of post-treatment periods
+  placebo   = 5,                  # no. of pre-treatment periods
+  cluster   = 'Firm_Final',                 # variable to cluster SEs on
+  controls = c("log_consumers")
+  )
+
+print(did_saidi)
+
+did_saifi = did_multiplegt_dyn(
+  df = df_all_firms, "SAIFI", "Firm_Final", "Year",  "privatization_year", # original regression params
+  effects   = 5,                  # no. of post-treatment periods
+  placebo   = 5,                  # no. of pre-treatment periods
+  cluster   = 'Firm_Final',                 # variable to cluster SEs on
+  controls = c("log_consumers")
+  )
+
+print(did_saifi)
+
+
+did_B1 = did_multiplegt_dyn(
+  df = df_all_firms, "B1_RESIDENCIAL", "Firm_Final", "Year",  "privatization_year", # original regression params
+  effects   = 5,                  # no. of post-treatment periods
+  placebo   = 5,                  # no. of pre-treatment periods
+  cluster   = 'Firm_Final',                 # variable to cluster SEs on
+  controls = c("log_consumers")
+  )
+
+print(did_B1)
+
+
+df_all_firms_test <- df_all_firms %>%
+  mutate(idname = as.integer(factor(Firm_Final)))  # Ensures unique IDs
+
+```
+
 
 
 # 4. Difference-in-difference implementation
@@ -702,6 +741,48 @@ summary(reg_revenue)
 
 ```
 
+
+```{r TWO-WAY FIXED EFFECTS}
+
+twoway_H <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "within", effect = "twoway",
+                 index = c("Firm_Final", "Year"))
+summary(twoway_H)
+
+twoway_H <- plm(SAIFI ~ privatization_year, data = df_all_firms, model = "within", effect = "twoway",
+                 index = c("Firm_Final", "Year"))
+summary(twoway_H)
+
+#PROFIT
+reg_profit <- plm(netprofit_margin ~ privatization_year, data = df_all_firms, model = "within", effect = "twoway",
+                   index = c("Firm_Final", "Year"))
+summary(reg_profit)
+
+
+#DEBIT
+reg_debit <- plm(debtequity_ratio ~ privatization_year, data = df_all_firms,  model = "within", effect = "twoway",
+                   index = c("Firm_Final", "Year"))
+summary(reg_debit)
+
+#consumers
+reg_consumers <- plm(consumers ~ privatization_year, data = df_all_firms,  model = "within", effect = "twoway",
+                   index = c("Firm_Final", "Year"))
+summary(reg_consumers)
+
+
+#consumption
+reg_consumption <- plm(consumption ~ privatization_year, data = df_all_firms, model = "within", effect = "twoway",
+                   index = c("Firm_Final", "Year"))
+summary(reg_consumption)
+
+#revenue
+reg_revenue <- plm(revenue ~ privatization_year, data = df_all_firms, model = "within", effect = "twoway",
+                   index = c("Firm_Final", "Year"))
+summary(reg_revenue)
+
+```
+
+
+
 ```{r Test: OLS regression OR fixed effect model? - PATENTS H}
 #Test for poolability of data: pFtest(PATENTS H)
 #all patents h, all controls
@@ -717,17 +798,20 @@ pFtest(did_reg_saidi_with,did_reg_saidi_pool)
 ```
 
 ```{r TIME FIXED EFFECTS}
+
 reg_saidi_FEtime <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "within", effect = "time", index = c("Firm_Final", "Year"))
 summary(reg_saidi_FEtime)
 
 ```
 
 ```{r COUNTRY FIXED EFFECTS}
+
 reg_saidi_FEcountry <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "within", effect = "individual", index = c("Firm_Final", "Year"))
 summary(reg_saidi_FEcountry)
 ```
 
 ```{r TWO-WAY FIXED EFFECTS}
+
 twoway_H <- plm(patents_H_application ~ RDI_regulation + Personnel + Budget + ValueRegulation + ihs_GDPfull + ElecConsumption, data = base, model = "within", effect = "twoway",
                  index = c("country", "Year"))
 summary(twoway_H)
