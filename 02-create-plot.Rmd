@@ -68,6 +68,7 @@ pacman::p_load(tidyverse, #packages for data science
                data.table, # Fast aggregation of large data
                basedosdados,
                bigQueryR,
+               fixest,
                googleAuthR,
                readxl, # read excel
                did, #Callway and Santanna DID
@@ -92,7 +93,33 @@ df_all_firms <- read.csv("source/final_data_firms.csv")
 
 df_all_firms <- df_all_firms %>% filter(Year > 1996)
 
+
 ```
+
+## 2.2. Susbstitution of one value on Net Profit Margin of Copel. Source: https://ri.copel.com/en/sustainability/annual-social-and-environmental-reports/
+```{r}
+
+# Net Profit Margin = (Net Profit or Net Income / Total Revenue) x 100% 
+
+# Consolidated Total Revenue = 3,061,009
+# Net Profit or Net Income = 475,310
+
+# Official exchange rate (LCU per US$, period average) - Brazil: https://data.worldbank.org/indicator/PA.NUS.FCRF?locations=BR
+# 2.35
+revenue_copel_2001 <-  3061009/2.35
+net_income_copel_2001 <- 475310/2.35
+
+net_profit_copel_2001 <- (net_income_copel_2001/revenue_copel_2001)*100
+
+print(net_profit_copel_2001)
+
+#df_all_firms$netprofit_margin[df_all_firms$Firm_Final == "Copel"] <- 25
+
+
+df_all_firms[df_all_firms == '-6142700'] <- "15.52789"
+
+```
+
 
 # 3. Format Dataset
 ## 3.1. Format: numeric variables
@@ -112,6 +139,12 @@ df_all <- df_all %>%
     SAIFI = as.numeric(SAIFI),
     netprofit_margin = as.numeric(netprofit_margin),
     debtequity_ratio = as.numeric(debtequity_ratio))
+
+
+df_all_firms <- df_all_firms %>%
+  mutate(
+    netprofit_margin = as.numeric(netprofit_margin))
+
 
 ```
 
@@ -133,7 +166,7 @@ df_all_firms <- df_all_firms %>%
 ```{r}
 
 # Create a bar plot to count the number of firms in each ownership type
-df_all_firms %>%  # Group by owner_type and count the number of firms in each category
+graph_ownership_br <- df_all_firms %>%  # Group by owner_type and count the number of firms in each category
                 group_by(owner_type) %>%
                 summarise(count = n_distinct(Firm_Final), .groups = "drop") %>%
   # Plot the results using ggplot2
@@ -147,6 +180,13 @@ df_all_firms %>%  # Group by owner_type and count the number of firms in each ca
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
 
+png("C:/Users/BEATRIZCO/OneDrive - Inter-American Development Bank Group/Documents/INE-WSA/Projects/Privatization Infrastructure/figures/firms_ownership_br.png", units="in", width=9, height=7, res=300)
+
+print(graph_ownership_br)
+
+dev.off()
+
+
 ```
 
 # 4. Descriptive Analysis 
@@ -159,7 +199,7 @@ df_priv_count <- df_all_firms %>%
   summarise(count_firms = n_distinct(Firm_Final), .groups = "drop")  # Count distinct firms privatized each year
 
 # Create the bar plot for privatization counts with customized x-axis breaks
-ggplot(df_priv_count, aes(x = Privatization, y = count_firms)) +
+graph_time_privatization <- ggplot(df_priv_count, aes(x = Privatization, y = count_firms)) +
   geom_bar(stat = "identity", fill = "skyblue", color = "blue") +  # Bar plot with custom colors
   labs(
     title = "Number of Firms Privatized by Year",
@@ -176,6 +216,15 @@ ggplot(df_priv_count, aes(x = Privatization, y = count_firms)) +
   ) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+png("C:/Users/BEATRIZCO/OneDrive - Inter-American Development Bank Group/Documents/INE-WSA/Projects/Privatization Infrastructure/figures/time_privatization.png", units="in", width=9, height=7, res=300)
+
+print(graph_time_privatization)
+
+dev.off()
+
+
+
 ```
 
 ## 4.2. boxplot of SAIDI by Year
@@ -335,6 +384,7 @@ ggplot(annual_long, aes(x = Year, y = Value, color = Metric)) +
 
 ## 4.6. Annual Average of Debit Equity Ratio
 ```{r}
+
 # Calculate the annual average of netprofit_margin
 annual_avg_debtequity_ratio <- df_all_firms %>%
   group_by(Year, owner_type) %>%
@@ -364,6 +414,7 @@ ggplot(annual_avg_debtequity_ratio, aes(x = Year, y = avg_debtequity_margin)) +
 
 ## 4.7.Annual Average of Net Profit Margin
 ```{r}
+
 # Calculate the annual average of netprofit_margin
 annual_avg_netprofit_margin <- df_all_firms %>%
   group_by(Year, owner_type) %>%
@@ -387,6 +438,7 @@ ggplot(annual_avg_netprofit_margin, aes(x = Year, y = avg_netprofit_margin)) +
     plot.title = element_text(hjust = 0.5)  # Center the plot title
   )+
   facet_wrap(~ owner_type)  # Facet by "owner_type"
+
 
 ```
 
@@ -486,7 +538,7 @@ df_all_firms <- df_all_firms %>%
 
 # Reshape the data to long format
 df_all_firms_long <- df_all_firms %>%
-  pivot_longer(cols = c(SAIDI, SAIFI, debtequity_ratio, revenue, consumers, consumption, B1_RESIDENCIAL, B2_RURAL, B3_DEMAIS, B4a_REDE_DE_DISTRIBUICAO),
+  pivot_longer(cols = c(SAIDI, SAIFI, netprofit_margin, debtequity_ratio, revenue, consumers, consumption, B1_RESIDENCIAL, B2_RURAL, B3_DEMAIS, B4a_REDE_DE_DISTRIBUICAO),
                names_to = "variable", 
                values_to = "value")
 
@@ -515,7 +567,49 @@ ggplot(df_all_firms_avg, aes(x = year_before_after, y = avg_value, color = varia
     plot.title = element_text(hjust = 0.5)  # Center the plot title
   )
 
+
+
+# Reshape the data to long format
+df_all_firms_long <- df_all_firms %>%
+  pivot_longer(cols = c(consumers, consumption),
+               names_to = "variable", 
+               values_to = "value")
+
+# Convert 'year_before_after' to numeric (with negative values allowed)
+df_all_firms_long <- df_all_firms_long %>%
+  mutate(year_before_after = as.numeric(gsub("[^0-9.-]", "", `year_before_after`)))  # Allow for negative signs
+
+
+# Selecting only some variables to plot a graph
+# Calculate the average of each variable for each year
+df_all_firms_avg <- df_all_firms_long %>%
+  group_by(year_before_after, variable) %>%
+  summarise(avg_value = mean(value, na.rm = TRUE), .groups = "drop")
+
+# Plot with geom_line for the average values
+graphs_coverage <- ggplot(df_all_firms_avg, aes(x = year_before_after, y = avg_value, color = variable, group = variable)) +
+  geom_line() +  # Adds lines for each variable
+  facet_wrap(~ variable, scales = "free_y", nrow = 1) +  # Creates separate plots for each variable
+  labs(
+    title = "Average Time Series of Different Variables",
+    x = "Year (Before/After)",
+    y = "Average Value"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+    plot.title = element_text(hjust = 0.5)  # Center the plot title
+  )
+
+
+# png("C:/Users/BEATRIZCO/OneDrive - Inter-American Development Bank Group/Documents/INE-WSA/Projects/Privatization Infrastructure/figures/coverage_before_after.png", units="in", width=10, height=7, res=300)
+# 
+print(graphs_coverage)
+# 
+# dev.off()
+
 ```
+
 
 
 ## 5.8. Correlation Matrix 
@@ -524,12 +618,13 @@ ggplot(df_all_firms_avg, aes(x = year_before_after, y = avg_value, color = varia
 
 # Convert character to numeric and compute log while handling zeros and warnings
 df_all_firms <- df_all_firms %>%
-  mutate(across(c(revenue, revenue_tax, consumption, consumers, tax), 
+  mutate(across(c(revenue, revenue_tax, consumption, consumers, tax, 
+                  SAIDI, SAIFI), 
                 ~ log(as.numeric(.) + 1), .names = "log_{.col}"))  # Adding 1 to avoid log(0)
 
 
 
-corrplot(corr = cor(df_all_firms[, c(4:11, 23:27)], use="pairwise.complete.obs"),
+corrplot(corr = cor(df_all_firms[, c(4:11, 24:28)], use="pairwise.complete.obs"),
          addCoef.col = "white",
          number.cex = 0.8,
          number.digits = 1,
@@ -540,10 +635,9 @@ corrplot(corr = cor(df_all_firms[, c(4:11, 23:27)], use="pairwise.complete.obs")
          mar = c(1,1,1,1)) #pairwise.complete.obs, because there are too many NAs
 
 
-GGally::ggpairs(df_all_firms[, c(4:11, 20, 23:27)],
+GGally::ggpairs(df_all_firms[, c(4:11, 20, 24:28)],
                 ggplot2::aes(colour = Treatment))
 
-str(df_all_firms)
 
 ```
 
@@ -562,7 +656,7 @@ sumtable(df_all_firms, group = "Treatment", out = "htmlreturn", file = "balancet
 #   mutate(treat = Treatment == "treated")  # Creates a logical column (TRUE/FALSE)
 
 
-#transform "privatization_zear" into numeric to run the code
+#transform "privatization_year" into numeric to run the code
 df_all_firms <- df_all_firms %>%
   mutate(privatization_year = as.numeric(privatization_year)) %>% 
   mutate(year_before_after = as.numeric(year_before_after))
@@ -570,6 +664,119 @@ df_all_firms <- df_all_firms %>%
 
 
 ```
+
+# Staggered DiD (CS2021)
+```{r}
+
+# Step 1: Identify first year of treatment (gname)
+df_all_firms <- df_all_firms |>
+  dplyr::group_by(idname) |>
+  dplyr::mutate(group = ifelse(any(privatization_year == 1),
+                                min(Year[privatization_year == 1]),  # First year treated
+                                Inf)) |>  # Inf = never treated
+  dplyr::ungroup()
+
+
+group_effectH <- att_gt(
+  yname = "B2_RURAL",
+  gname = "group",              # First year treated (constructed above)
+  idname = "idname",            # Unit identifier
+  tname = "Year",               # Time variable
+  xformla = ~ 1,                # No covariates; use ~ x1 + x2 if needed
+  data = df_all_firms,
+  est_method = "reg",           # or "dr" for doubly robust
+  allow_unbalanced_panel = TRUE,
+  bstrap = TRUE,
+  clustervars = "idname"        # Recommended
+)
+summary(group_effectH)
+
+
+# Dynamic effects (event study)
+es <- aggte(group_effectH, type = "dynamic", min_e = -5, max_e = 10, na.rm = TRUE)
+summary(es)
+ggdid(es, title = "Event Study Plot")
+
+# Overall ATT
+overall <- aggte(group_effectH, type = "group", na.rm = TRUE)
+summary(overall)
+
+
+
+```
+
+# Loop function - Two way fixed effects Callaway and santanna
+```{r}
+#Function
+library(did)
+library(ggplot2)
+
+run_did_analysis <- function(yvar, data, gname = "group", idname = "idname", tname = "Year",
+                             xformla = ~1, method = "reg", min_e = -5, max_e = 10) {
+  
+  message(paste0("Estimating ATT for outcome: ", yvar))
+  
+  # Estimate group-time ATT
+  att <- att_gt(
+    yname = yvar,
+    gname = gname,
+    idname = idname,
+    tname = tname,
+    xformla = xformla,
+    data = data,
+    est_method = method,
+    allow_unbalanced_panel = TRUE,
+    bstrap = TRUE,
+    clustervars = idname,
+    control_group = "notyettreated"   # ✅ here is the key change
+
+  )
+  
+  # Dynamic effects
+  es <- aggte(att, type = "dynamic", min_e = min_e, max_e = max_e, na.rm = TRUE)
+  
+  # Return results
+  list(
+    att_gt = att,
+    es = es,
+    plot = ggdid(es, title = paste("Event Study:", yvar))
+  )
+}
+
+colnames(df_all_firms)
+
+# Run for multiple outcomes
+outcomes <- c("SAIDI", "SAIFI", 
+              "log_SAIDI", "log_SAIFI", 
+              "B1_RESIDENCIAL", "B2_RURAL", "B3_DEMAIS", 
+              "B4a_REDE_DE_DISTRIBUICAO", 
+              "log_revenue", "log_consumption", "log_consumers", "log_tax")
+
+did_results <- lapply(outcomes, function(var) {
+  run_did_analysis(yvar = var, data = df_all_firms)
+})
+names(did_results) <- outcomes
+
+
+# Define your output directory
+output_dir <- "C:/Users/BEATRIZCO/OneDrive - Inter-American Development Bank Group/Documents/INE-WSA/Projects/Privatization Infrastructure/Results"
+
+# Ensure the folder exists (optional safeguard)
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Save each plot as PNG to the specified directory
+for (name in names(did_results)) {
+  plot_obj <- did_results[[name]]$plot
+  
+  ggsave(
+    filename = file.path(output_dir, paste0(name, "_event_study.png")),
+    plot = plot_obj,
+    width = 8, height = 6, dpi = 300
+  )
+}
+
+```
+
 
 
 
@@ -592,24 +799,24 @@ summary(group_effectH)
 
 
 # Group Treatment 
-# cs21 = att_gt(
-#     yname         = "consumers",
-#     tname         = "Year",
-#     idname        = "idname",
-#     gname         = "Privatization",
-#   # xformla       = NULL,            # No additional controls in this dataset 
-#     control_group = "notyettreated", # Too few groups for "nevertreated" default
-#     clustervars   = "idname", 
-#     data          = df_all_firms
-#     )
-# cs21
+cs21 = att_gt(
+    yname         = "consumers",
+    tname         = "Year",
+    idname        = "idname",
+    gname         = "Privatization",
+  # xformla       = NULL,            # No additional controls in this dataset
+    control_group = "notyettreated", # Too few groups for "nevertreated" default
+    clustervars   = "idname",
+    data          = df_all_firms
+    )
+cs21
 
 
 cs21_es = aggte(cs21, type = "dynamic", min_e = -10, max_e = 10, cband = FALSE)
 cs21_es
 
 ggdid(cs21_es, title = "(cs)did")
-
+summary(df_all_firms$SAIFI)
 ```
 
 # Package: did_multiplegt
@@ -699,7 +906,7 @@ reg_revenue <- plm(revenue ~ privatization_year, data = df_all_firms, model = "p
                    index = c("Firm_Final", "Year"))
 summary(reg_revenue)
 
-
+untreated<-df_all_firms%>%filter(is.infinite(group))
 ```
 
 ```{r Test: OLS regression OR fixed effect model? - PATENTS H}
@@ -728,14 +935,48 @@ summary(reg_saidi_FEcountry)
 ```
 
 ```{r TWO-WAY FIXED EFFECTS}
-twoway_H <- plm(patents_H_application ~ RDI_regulation + Personnel + Budget + ValueRegulation + ihs_GDPfull + ElecConsumption, data = base, model = "within", effect = "twoway",
-                 index = c("country", "Year"))
-summary(twoway_H)
 
-twoway_H <- plm(patents_H_application ~ RDI_regulation, data = base, model = "within", 
-                effect = "twoway",
-                index = c("country", "Year"))
-                summary(twoway_H)
+
+#SAIDI
+reg_saidi_twoway <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "within",
+                   index = c("Firm_Final", "Year"))
+summary(reg_saidi_twoway)
+
+
+#SAIFI
+reg_saifi_twoway <- plm(SAIFI ~ privatization_year, data = df_all_firms, model = "within",
+                   index = c("Firm_Final", "Year"))
+summary(reg_saifi_twoway)
+
+
+#PROFIT
+reg_profit_twoway <- plm(netprofit_margin ~ privatization_year, data = df_all_firms, model = "within",
+                   index = c("Firm_Final", "Year"))
+summary(reg_profit_twoway)
+
+
+#DEBIT
+reg_debit_twoway <- plm(debtequity_ratio ~ privatization_year, data = df_all_firms, model = "within",
+                   index = c("Firm_Final", "Year"))
+summary(reg_debit_twoway)
+
+#consumers
+reg_consumers_twoway <- plm(consumers ~ privatization_year, data = df_all_firms, model = "within",
+                   index = c("Firm_Final", "Year"))
+summary(reg_consumers_twoway)
+
+
+#consumption
+reg_consumption_twoway <- plm(consumption ~ privatization_year, data = df_all_firms, model = "within",
+                   index = c("Firm_Final", "Year"))
+summary(reg_consumption_twoway)
+
+#revenue
+reg_revenue_twoway <- plm(revenue ~ privatization_year, data = df_all_firms, model = "within",
+                   index = c("Firm_Final", "Year"))
+summary(reg_revenue_twoway)
+
+
 
 ```
 

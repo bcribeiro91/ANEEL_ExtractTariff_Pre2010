@@ -118,6 +118,38 @@ df_all <- df_all %>%
     netprofit_margin = as.numeric(netprofit_margin),
     debtequity_ratio = as.numeric(debtequity_ratio))
 
+
+df_all_firms <- df_all_firms %>%
+  mutate(
+    netprofit_margin = as.numeric(netprofit_margin))
+
+
+
+```
+
+
+## 2.2. Susbstitution of one value on Net Profit Margin of Copel. Source: https://ri.copel.com/en/sustainability/annual-social-and-environmental-reports/
+```{r}
+
+# Net Profit Margin = (Net Profit or Net Income / Total Revenue) x 100% 
+
+# Consolidated Total Revenue = 3,061,009
+# Net Profit or Net Income = 475,310
+
+# Official exchange rate (LCU per US$, period average) - Brazil: https://data.worldbank.org/indicator/PA.NUS.FCRF?locations=BR
+# 2.35
+revenue_copel_2001 <-  3061009/2.35
+net_income_copel_2001 <- 475310/2.35
+
+net_profit_copel_2001 <- (net_income_copel_2001/revenue_copel_2001)*100
+
+print(net_profit_copel_2001)
+
+#df_all_firms$netprofit_margin[df_all_firms$Firm_Final == "Copel"] <- 25
+
+
+df_all_firms[df_all_firms == '-6142700'] <- "15.52789"
+
 ```
 
 
@@ -486,7 +518,7 @@ df_all_firms <- df_all_firms_complete %>%
 
 # Reshape the data to long format
 df_all_firms_long <- df_all_firms %>%
-  pivot_longer(cols = c(SAIDI, SAIFI, debtequity_ratio, revenue, consumers, consumption, B1_RESIDENCIAL, B2_RURAL, B3_DEMAIS, B4a_REDE_DE_DISTRIBUICAO),
+  pivot_longer(cols = c(SAIDI, SAIFI, debtequity_ratio, netprofit_margin, revenue, consumers, consumption, B1_RESIDENCIAL, B2_RURAL, B3_DEMAIS, B4a_REDE_DE_DISTRIBUICAO),
                names_to = "variable", 
                values_to = "value")
 
@@ -524,7 +556,7 @@ ggplot(df_all_firms_avg, aes(x = year_before_after, y = avg_value, color = varia
 
 # Convert character to numeric and compute log while handling zeros and warnings
 df_all_firms <- df_all_firms %>%
-  mutate(across(c(revenue, revenue_tax, consumption, consumers, tax, B1_RESIDENCIAL, B2_RURAL, B3_DEMAIS, B4a_REDE_DE_DISTRIBUICAO), 
+  mutate(across(c(revenue, revenue_tax,netprofit_margin, consumption, consumers, tax, B1_RESIDENCIAL, B2_RURAL, B3_DEMAIS, B4a_REDE_DE_DISTRIBUICAO), 
                 ~ log(as.numeric(.) + 1), .names = "log_{.col}"))  # Adding 1 to avoid log(0)
 
 
@@ -550,7 +582,7 @@ GGally::ggpairs(df_all_firms[, c(4:11, 20, 23:31)],
 ```{r 2.3.1. Variance Inflation Factor (VIF): PATENT TECHNOLOGIES}
 
 
-reg_TEC <- plm(SAIFI ~ privatization_year + log_consumers + debtequity_ratio + B1_RESIDENCIAL, data = df_all_firms, model = "pooling", index = c("Firm_Final", "Year"))
+reg_TEC <- plm(SAIFI ~ privatization_year + log_consumers + debtequity_ratio + netprofit_margin + B1_RESIDENCIAL, data = df_all_firms, model = "pooling", index = c("Firm_Final", "Year"))
   summary(reg_TEC)
 
 #variance inflation factor (VIF), Test for Multicolinearity
@@ -585,10 +617,10 @@ df_all_firms <- df_all_firms %>%
 
 
 
-# TwoWayFE - Calway and Santanna 
+# TwoWayFE - Callaway and Santanna 
 ```{r}
 
-# Group Treatment 
+# Group Treatment: SAIFI
 cs21 = att_gt(
     yname         = "SAIFI",
     tname         = "Year",
@@ -603,6 +635,33 @@ cs21
 
 
 cs21_es = aggte(cs21, type = "dynamic", min_e = -10, max_e = 10, cband = FALSE)
+cs21_es
+
+ggdid(cs21_es, title = "(cs)did")
+
+
+
+# Group Treatment: Net Profit Margin
+cs21 = att_gt(
+    yname         = "netprofit_margin",
+    tname         = "Year",
+    idname        = "idname",
+    gname         = "Privatization",
+  # xformla       = NULL,            # No additional controls in this dataset
+    control_group = "notyettreated", # Too few groups for "nevertreated" default
+    clustervars   = "idname",
+    na.rm = TRUE,
+    data          = df_all_firms
+    )
+cs21
+
+
+cs21_es = aggte(cs21, 
+                type = "dynamic", 
+                min_e = -10, 
+                max_e = 10, 
+                cband = FALSE,
+                na.rm = TRUE)
 cs21_es
 
 ggdid(cs21_es, title = "(cs)did")
@@ -632,11 +691,12 @@ mod_dCDH20 = did_multiplegt(
 
 ```
 
+
 # Package: did_multiplegt_dyn
 ```{r}
 
 did_multiplegt_dyn(df = df_all_firms, 
-                   outcome = "SAIDI", 
+                   outcome = "SAIFI", 
                    group = "Firm_Final", 
                    time = "Year", 
                    treatment = "privatization_year",
@@ -681,6 +741,29 @@ print(did_saifi)
 
 did_B1 = did_multiplegt_dyn(
   df = df_all_firms, "B1_RESIDENCIAL", "Firm_Final", "Year",  "privatization_year", # original regression params
+  effects   = 5,                  # no. of post-treatment periods
+  placebo   = 5,                  # no. of pre-treatment periods
+  cluster   = 'Firm_Final',                 # variable to cluster SEs on
+  controls = c("log_consumers")
+  )
+
+print(did_B1)
+
+
+
+did_B1 = did_multiplegt_dyn(
+  df = df_all_firms, "debtequity_ratio", "Firm_Final", "Year",  "privatization_year", # original regression params
+  effects   = 5,                  # no. of post-treatment periods
+  placebo   = 5,                  # no. of pre-treatment periods
+  cluster   = 'Firm_Final',                 # variable to cluster SEs on
+  controls = c("log_consumers")
+  )
+
+print(did_B1)
+
+
+did_B1 = did_multiplegt_dyn(
+  df = df_all_firms, "netprofit_margin", "Firm_Final", "Year",  "privatization_year", # original regression params
   effects   = 5,                  # no. of post-treatment periods
   placebo   = 5,                  # no. of pre-treatment periods
   cluster   = 'Firm_Final',                 # variable to cluster SEs on
@@ -744,10 +827,13 @@ summary(reg_revenue)
 
 ```{r TWO-WAY FIXED EFFECTS}
 
+#SAIDI
 twoway_H <- plm(SAIDI ~ privatization_year, data = df_all_firms, model = "within", effect = "twoway",
                  index = c("Firm_Final", "Year"))
 summary(twoway_H)
 
+
+#SAIFI
 twoway_H <- plm(SAIFI ~ privatization_year, data = df_all_firms, model = "within", effect = "twoway",
                  index = c("Firm_Final", "Year"))
 summary(twoway_H)
